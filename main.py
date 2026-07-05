@@ -37,7 +37,8 @@ def get_updates(offset=None):
         response = requests.get(f"{API_URL}/getUpdates", params=params)
         print (f"get_updates status: {response.status_code}")
         if response.status_code == 200:
-            print(f"get_updates response : {response.status_code} - {response.text[:100]}")
+            print(f"get_updates response : {response.status_code} - {response.text[:200]}")
+            
             return response.json()
         return {}
     except Exception as e:
@@ -51,6 +52,7 @@ def bot_loop():
     while True:
         try:
             updates = get_updates(last_update_id + 1)
+             print(f"updates result: {updates}")
             print(f"updates received: {updates}")
             if "result" in updates:
                 for update in updates["result"]:
