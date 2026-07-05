@@ -92,7 +92,7 @@ def bot_loop():
             print(f"خطا در حلقه بات: {e}")
             time.sleep(3)
 
-if _name == "__main__":
+if __name__ == "__main__":
     # اجرای وب‌سرور در یک رشته جداگانه
     t = Thread(target=run_flask)
     t.start()
