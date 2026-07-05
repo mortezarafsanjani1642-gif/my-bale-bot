@@ -35,6 +35,7 @@ def get_updates(offset=None):
     params = {"offset": offset}
     try:
         response = requests.get(f"{API_URL}/getUpdates", params=params)
+        print (f"get_updates status "{response.status_code}")
         if response.status_code == 200:
             return response.json()
         return {}
@@ -44,6 +45,7 @@ def get_updates(offset=None):
 
 def bot_loop():
     print("بات روشن شد... در حال گوش دادن به پیام‌ها 🚀")
+    print("Bot loop is running...!")
     last_update_id = 0
     while True:
         try:
