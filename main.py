@@ -5,9 +5,9 @@ from flask import Flask
 from threading import Thread
 
 # --- تنظیمات بات ---
-TOKEN = "626939785:8_aTchF4OohBT0FKJxTnsexwpR8gyzbGmms"
-ADMIN_ID = "1264284928"
-API_URL = f"https://api.bale.ai/bot{TOKEN}"
+TOKEN = os.environ.get("Bot_TOKEN")
+ADMIN_ID = os.environ.get("ADMIN_ID")
+API_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
 # برای ذخیره وضعیت هر کاربر
 user_data = {}
@@ -44,10 +44,10 @@ def get_updates(offset=None):
 
 def bot_loop():
     print("بات روشن شد... در حال گوش دادن به پیام‌ها 🚀")
-    last_update_id = None
+    last_update_id = 0
     while True:
         try:
-            updates = get_updates(last_update_id + 1 if last_update_id else None)
+            updates = get_updates(last_update_id + 1)
             if "result" in updates:
                 for update in updates["result"]:
                     last_update_id = update["update_id"]
