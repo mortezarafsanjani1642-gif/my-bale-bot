@@ -164,6 +164,12 @@ def refresh_products():
     settings = load_settings()
     PRODUCTS = settings.get("products", {})
 
+# ========== کیبورد با دکمه بازگشت برای دریافت کد ==========
+def build_back_keyboard():
+    """کیبورد ساده با دکمه بازگشت"""
+    keyboard = [[{"text": "🔙 بازگشت"}]]
+    return {"keyboard": keyboard, "resize_keyboard": True}
+
 # ========== کیبوردها ==========
 def build_main_menu():
     keyboard = [
@@ -224,7 +230,6 @@ def build_admin_panel():
     return {"keyboard": keyboard, "resize_keyboard": True}
 
 def build_dashboard_menu():
-    """منوی داشبورد با دو گزینه"""
     keyboard = [
         [{"text": "📊 اطلاعات وضعیت سفارش‌ها"}],
         [{"text": "📦 محصولات تولید شده"}],
@@ -344,6 +349,10 @@ def handle_admin_order_status(chat_id):
 def handle_admin_cancel_order(chat_id, text):
     state = user_data.get(chat_id, {}).get("state")
     if state == "ADMIN_CANCEL_GET_TRACKING":
+        if text == "🔙 بازگشت":
+            send_message(chat_id, "به پنل مدیریت بازگشتید.", build_admin_panel())
+            user_data.pop(chat_id, None)
+            return
         tracking = normalize_persian_numbers(text.strip())
         if tracking in orders:
             orders[tracking]['status'] = 'cancelled'
@@ -360,15 +369,19 @@ def handle_admin_cancel_order(chat_id, text):
             send_message(chat_id, f"✅ سفارش {tracking} با موفقیت لغو شد و به کاربر اطلاع داده شد.", build_admin_panel())
             user_data.pop(chat_id, None)
         else:
-            send_message(chat_id, "❌ کد پیگیری نامعتبر است. لطفاً دوباره وارد کنید:", remove_keyboard())
+            send_message(chat_id, "❌ کد پیگیری نامعتبر است. لطفاً دوباره وارد کنید یا از دکمه بازگشت استفاده کنید:", build_back_keyboard())
     else:
-        send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش مورد نظر برای لغو را وارد کنید:", remove_keyboard())
+        send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش مورد نظر برای لغو را وارد کنید:", build_back_keyboard())
         user_data[chat_id] = {"state": "ADMIN_CANCEL_GET_TRACKING"}
 
 # ========== مدیریت حذف همیشگی سفارش ==========
 def handle_admin_delete_order(chat_id, text):
     state = user_data.get(chat_id, {}).get("state")
     if state == "ADMIN_DELETE_GET_TRACKING":
+        if text == "🔙 بازگشت":
+            send_message(chat_id, "به پنل مدیریت بازگشتید.", build_admin_panel())
+            user_data.pop(chat_id, None)
+            return
         tracking = normalize_persian_numbers(text.strip())
         if tracking in orders:
             order = orders.pop(tracking)
@@ -384,19 +397,17 @@ def handle_admin_delete_order(chat_id, text):
             send_message(chat_id, f"✅ سفارش {tracking} با موفقیت حذف شد.", build_admin_panel())
             user_data.pop(chat_id, None)
         else:
-            send_message(chat_id, "❌ کد پیگیری نامعتبر است. لطفاً دوباره وارد کنید:", remove_keyboard())
+            send_message(chat_id, "❌ کد پیگیری نامعتبر است. لطفاً دوباره وارد کنید یا از دکمه بازگشت استفاده کنید:", build_back_keyboard())
     else:
-        send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش مورد نظر برای حذف کامل را وارد کنید:", remove_keyboard())
+        send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش مورد نظر برای حذف کامل را وارد کنید:", build_back_keyboard())
         user_data[chat_id] = {"state": "ADMIN_DELETE_GET_TRACKING"}
 
-# ========== داشبورد (جدید) ==========
+# ========== داشبورد ==========
 def handle_admin_dashboard(chat_id):
-    """نمایش منوی داشبورد"""
     send_message(chat_id, "📊 داشبورد مدیریت:\nلطفاً یکی از گزینه‌های زیر را انتخاب کنید:", build_dashboard_menu())
     user_data[chat_id] = {"state": "ADMIN_DASHBOARD_MENU"}
 
 def handle_dashboard_status(chat_id):
-    """نمایش آمار وضعیت سفارش‌ها"""
     if not orders:
         send_message(chat_id, "📭 هیچ سفارشی در سیستم ثبت نشده است.", build_admin_panel())
         user_data.pop(chat_id, None)
@@ -431,13 +442,11 @@ def handle_dashboard_status(chat_id):
     send_message(chat_id, msg, build_dashboard_menu())
 
 def handle_dashboard_products(chat_id):
-    """نمایش آمار محصولات تولید شده (وضعیت payment_verified)"""
     if not orders:
         send_message(chat_id, "📭 هیچ سفارشی در سیستم ثبت نشده است.", build_admin_panel())
         user_data.pop(chat_id, None)
         return
     
-    # بررسی سفارش‌های با وضعیت payment_verified
     product_stats = {}
     for tracking, order in orders.items():
         if order.get('status') == 'payment_verified':
@@ -452,7 +461,6 @@ def handle_dashboard_products(chat_id):
         send_message(chat_id, "📭 هیچ محصولی با وضعیت 'تایید شده' یافت نشد.", build_dashboard_menu())
         return
     
-    # مرتب‌سازی از بیشترین به کمترین
     sorted_products = sorted(product_stats.items(), key=lambda x: x[1], reverse=True)
     
     msg = "📦 آمار محصولات تولید شده (تایید شده):\n\n"
@@ -745,12 +753,17 @@ def finalize_order(chat_id):
 # ========== مدیریت ارسال رسید ==========
 def handle_receipt_upload(chat_id, text):
     if text == "💰 ارسال رسید پرداخت":
-        send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش خود را وارد کنید:", remove_keyboard())
+        send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش خود را وارد کنید:", build_back_keyboard())
         user_data[chat_id] = {"state": "RECEIPT_GET_TRACKING"}
     else:
         send_message(chat_id, "لطفاً از دکمه‌های منو استفاده کنید.", build_main_menu())
 
 def handle_receipt_tracking(chat_id, text):
+    if text == "🔙 بازگشت":
+        send_message(chat_id, "به منوی اصلی بازگشتید.", build_main_menu())
+        user_data.pop(chat_id, None)
+        return
+    
     tracking = normalize_persian_numbers(text.strip())
     if tracking in orders:
         order = orders[tracking]
@@ -774,7 +787,7 @@ def handle_receipt_tracking(chat_id, text):
             )
             user_data.pop(chat_id, None)
     else:
-        send_message(chat_id, "❌ کد پیگیری نامعتبر است. لطفاً دوباره وارد کنید یا /start را بزنید.")
+        send_message(chat_id, "❌ کد پیگیری نامعتبر است. لطفاً دوباره وارد کنید یا از دکمه بازگشت استفاده کنید:", build_back_keyboard())
 
 # ========== مدیریت ادمین (بخش اصلی) ==========
 def handle_admin_command(chat_id, command):
@@ -910,6 +923,10 @@ def handle_admin_command(chat_id, command):
 def handle_admin_set_price(chat_id, text):
     state = user_data.get(chat_id, {}).get("state")
     if state == "ADMIN_SET_PRICE_GET_TRACKING":
+        if text == "🔙 بازگشت":
+            send_message(chat_id, "به پنل مدیریت بازگشتید.", build_admin_panel())
+            user_data.pop(chat_id, None)
+            return
         tracking = normalize_persian_numbers(text.strip())
         if tracking in orders and orders[tracking]['status'] == 'registered':
             user_data[chat_id]["admin_tracking"] = tracking
@@ -922,10 +939,13 @@ def handle_admin_set_price(chat_id, text):
                 remove_keyboard()
             )
         else:
-            send_message(chat_id, "❌ کد پیگیری نامعتبر یا سفارش در مرحله ثبت اولیه نیست.")
-            user_data.pop(chat_id, None)
+            send_message(chat_id, "❌ کد پیگیری نامعتبر یا سفارش در مرحله ثبت اولیه نیست. لطفاً دوباره وارد کنید یا از دکمه بازگشت استفاده کنید:", build_back_keyboard())
     
     elif state == "ADMIN_SET_PRICE_ENTER":
+        if text == "🔙 بازگشت":
+            send_message(chat_id, "به پنل مدیریت بازگشتید.", build_admin_panel())
+            user_data.pop(chat_id, None)
+            return
         try:
             final_price = int(normalize_persian_numbers(text.strip()))
             if final_price <= 0:
@@ -955,6 +975,10 @@ def handle_admin_set_price(chat_id, text):
 def handle_admin_pending_receipt(chat_id, text):
     state = user_data.get(chat_id, {}).get("state")
     if state == "ADMIN_PENDING_RECEIPT_GET_TRACKING":
+        if text == "🔙 بازگشت":
+            send_message(chat_id, "به پنل مدیریت بازگشتید.", build_admin_panel())
+            user_data.pop(chat_id, None)
+            return
         tracking = normalize_persian_numbers(text.strip())
         if tracking in orders and orders[tracking]['status'] == 'pending_payment':
             user_data[chat_id]["admin_tracking"] = tracking
@@ -962,8 +986,7 @@ def handle_admin_pending_receipt(chat_id, text):
             keyboard = build_admin_confirm_keyboard(tracking)
             send_message(chat_id, f"سفارش {tracking} را تایید یا رد می‌کنید؟", keyboard)
         else:
-            send_message(chat_id, "❌ کد پیگیری نامعتبر یا سفارش در مرحله در انتظار رسید نیست.")
-            user_data.pop(chat_id, None)
+            send_message(chat_id, "❌ کد پیگیری نامعتبر یا سفارش در مرحله در انتظار رسید نیست. لطفاً دوباره وارد کنید یا از دکمه بازگشت استفاده کنید:", build_back_keyboard())
     
     elif state == "ADMIN_PENDING_RECEIPT_ACTION":
         tracking = user_data[chat_id].get("admin_tracking")
@@ -1159,16 +1182,16 @@ def bot_loop():
 
                         if text == "💰 ارسال رسید پرداخت":
                             user_data[chat_id] = {"state": "RECEIPT_GET_TRACKING"}
-                            send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش خود را وارد کنید:", remove_keyboard())
+                            send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش خود را وارد کنید:", build_back_keyboard())
                             continue
 
                         if text == "✏️ تغییر سفارش":
-                            send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش خود را وارد کنید:", remove_keyboard())
+                            send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش خود را وارد کنید:", build_back_keyboard())
                             user_data[chat_id] = {"state": "EDIT_GET_TRACKING"}
                             continue
 
                         if text == "🔍 پیگیری سفارش":
-                            send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش خود را وارد کنید:", remove_keyboard())
+                            send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش خود را وارد کنید:", build_back_keyboard())
                             user_data[chat_id] = {"state": "TRACK_GET_TRACKING"}
                             continue
 
@@ -1199,6 +1222,10 @@ def bot_loop():
                         elif state == "RECEIPT_GET_TRACKING":
                             handle_receipt_tracking(chat_id, text)
                         elif state == "EDIT_GET_TRACKING":
+                            if text == "🔙 بازگشت":
+                                send_message(chat_id, "به منوی اصلی بازگشتید.", build_main_menu())
+                                user_data.pop(chat_id, None)
+                                continue
                             tracking = normalize_persian_numbers(text.strip())
                             if tracking in orders:
                                 user_data[chat_id]["edit_tracking"] = tracking
@@ -1209,7 +1236,7 @@ def bot_loop():
                                     build_edit_cancel_keyboard(tracking)
                                 )
                             else:
-                                send_message(chat_id, "❌ کد پیگیری نامعتبر است.")
+                                send_message(chat_id, "❌ کد پیگیری نامعتبر است. لطفاً دوباره وارد کنید یا از دکمه بازگشت استفاده کنید:", build_back_keyboard())
                         elif state == "EDIT_SHOW_OPTIONS":
                             if text.startswith("✏️ ویرایش سفارش"):
                                 tracking = text.split()[-1]
@@ -1262,13 +1289,17 @@ def bot_loop():
                             else:
                                 send_message(chat_id, "لطفاً یکی از گزینه‌ها را انتخاب کنید.")
                         elif state == "TRACK_GET_TRACKING":
+                            if text == "🔙 بازگشت":
+                                send_message(chat_id, "به منوی اصلی بازگشتید.", build_main_menu())
+                                user_data.pop(chat_id, None)
+                                continue
                             tracking = normalize_persian_numbers(text.strip())
                             if tracking in orders:
                                 show_order_summary(chat_id, tracking)
                                 send_message(chat_id, "به منوی اصلی بازگشتید.", build_main_menu())
                                 user_data.pop(chat_id, None)
                             else:
-                                send_message(chat_id, "❌ کد پیگیری نامعتبر است.")
+                                send_message(chat_id, "❌ کد پیگیری نامعتبر است. لطفاً دوباره وارد کنید یا از دکمه بازگشت استفاده کنید:", build_back_keyboard())
                         else:
                             if text not in ["/start", "🛍️ ثبت سفارش جدید", "💰 ارسال رسید پرداخت", "✏️ تغییر سفارش", "🔍 پیگیری سفارش", "🔙 بازگشت"]:
                                 send_message(chat_id, "لطفاً از دکمه‌های منو استفاده کنید.", build_main_menu())
