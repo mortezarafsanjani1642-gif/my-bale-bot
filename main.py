@@ -129,8 +129,8 @@ def build_edit_cancel_keyboard(tracking):
 
 def build_admin_panel():
     keyboard = [
-        [{"text": "📋 سفارش‌های باز"}],
-        [{"text": "📋 لیست همه سفارش‌ها"}],
+        [{"text": "سفارش‌های باز"}],
+        [{"text": "لیست همه سفارش‌ها"}],
         [{"text": "🔄 تغییر وضعیت سفارش"}],
         [{"text": "🚚 تحویل سفارش"}]
     ]
