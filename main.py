@@ -479,7 +479,6 @@ def handle_receipt_tracking(chat_id, text):
     tracking = normalize_persian_numbers(text.strip())
     if tracking in orders:
         order = orders[tracking]
-        # اجازه ارسال رسید برای وضعیت‌های pending_payment و payment_rejected
         if order['status'] == "pending_payment" or order['status'] == "payment_rejected":
             user_data[chat_id] = {
                 "state": "RECEIPT_UPLOAD",
@@ -514,7 +513,9 @@ def handle_admin_command(chat_id, command):
         for tracking in open_orders:
             order = orders[tracking]
             total = order.get('total_price', 0)
-            msg += f"🆔 {tracking} | {order['name']} | قیمت تقریبی: {total:,} تومان\n"
+            # اصلاح: استفاده از items[0]['product']
+            product_name = order['items'][0]['product'] if order['items'] else "نامشخص"
+            msg += f"🆔 {tracking} | {order['name']} | {product_name} | قیمت تقریبی: {total:,} تومان\n"
         
         msg += "\n🔑 برای تعیین قیمت نهایی، کد پیگیری سفارش را وارد کنید."
         send_message(chat_id, msg, remove_keyboard())
@@ -530,7 +531,8 @@ def handle_admin_command(chat_id, command):
         for tracking in pending_orders:
             order = orders[tracking]
             final_price = order.get('final_price', 'نامشخص')
-            msg += f"🆔 {tracking} | {order['name']} | قیمت نهایی: {final_price:,} تومان\n"
+            product_name = order['items'][0]['product'] if order['items'] else "نامشخص"
+            msg += f"🆔 {tracking} | {order['name']} | {product_name} | قیمت نهایی: {final_price:,} تومان\n"
         send_message(chat_id, msg, build_admin_panel())
     
     elif command == "✅ رسیدهای تایید شده":
@@ -541,7 +543,8 @@ def handle_admin_command(chat_id, command):
         msg = "✅ رسیدهای تایید شده:\n\n"
         for tracking in verified:
             order = orders[tracking]
-            msg += f"🆔 {tracking} | {order['name']} | {order['product']}\n"
+            product_name = order['items'][0]['product'] if order['items'] else "نامشخص"
+            msg += f"🆔 {tracking} | {order['name']} | {product_name}\n"
         send_message(chat_id, msg, build_admin_panel())
     
     elif command == "❌ رسیدهای رد شده":
@@ -552,7 +555,8 @@ def handle_admin_command(chat_id, command):
         msg = "❌ رسیدهای رد شده:\n\n"
         for tracking in rejected:
             order = orders[tracking]
-            msg += f"🆔 {tracking} | {order['name']} | {order['product']}\n"
+            product_name = order['items'][0]['product'] if order['items'] else "نامشخص"
+            msg += f"🆔 {tracking} | {order['name']} | {product_name}\n"
         send_message(chat_id, msg, build_admin_panel())
     
     elif command == "⏳ رسیدهای در انتظار تایید":
@@ -563,7 +567,8 @@ def handle_admin_command(chat_id, command):
         msg = "⏳ رسیدهای در انتظار تایید:\n\n"
         for tracking in pending:
             order = orders[tracking]
-            msg += f"🆔 {tracking} | {order['name']} | {order['product']}\n"
+            product_name = order['items'][0]['product'] if order['items'] else "نامشخص"
+            msg += f"🆔 {tracking} | {order['name']} | {product_name}\n"
         msg += "\n🔑 لطفاً کد پیگیری سفارش مورد نظر را وارد کنید تا بتوانید رسید آن را تایید یا رد کنید."
         send_message(chat_id, msg, remove_keyboard())
         user_data[chat_id] = {"state": "ADMIN_PENDING_RECEIPT_GET_TRACKING"}
@@ -580,7 +585,8 @@ def handle_admin_command(chat_id, command):
                 "payment_verified": "✅",
                 "payment_rejected": "❌"
             }.get(order['status'], "❓")
-            msg += f"{status_emoji} {tracking} | {order['name']} | {get_order_status_text(order['status'])}\n"
+            product_name = order['items'][0]['product'] if order['items'] else "نامشخص"
+            msg += f"{status_emoji} {tracking} | {order['name']} | {product_name} | {get_order_status_text(order['status'])}\n"
         send_message(chat_id, msg, build_admin_panel())
 
 def handle_admin_set_price(chat_id, text):
@@ -756,13 +762,11 @@ def bot_loop():
                             data = user_data[chat_id]
                             tracking = data.get("tracking")
                             if tracking and tracking in orders:
-                                # ========== بخش کلیدی اصلاح شده ==========
-                                # اگر وضعیت payment_verified نباشه، به pending_payment تغییر بده
+                                # تغییر وضعیت به pending_payment (اگر تایید نشده باشد)
                                 if orders[tracking]['status'] != 'payment_verified':
                                     orders[tracking]['status'] = 'pending_payment'
                                     save_orders()
                                     print(f"✅ وضعیت سفارش {tracking} به pending_payment تغییر کرد")
-                                # ========================================
                                 
                                 caption = (
                                     f"📎 رسید پرداخت جدید\n\n"
