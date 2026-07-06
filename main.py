@@ -479,6 +479,7 @@ def handle_receipt_tracking(chat_id, text):
     tracking = normalize_persian_numbers(text.strip())
     if tracking in orders:
         order = orders[tracking]
+        # اجازه ارسال رسید برای وضعیت‌های pending_payment و payment_rejected
         if order['status'] == "pending_payment" or order['status'] == "payment_rejected":
             user_data[chat_id] = {
                 "state": "RECEIPT_UPLOAD",
@@ -755,10 +756,13 @@ def bot_loop():
                             data = user_data[chat_id]
                             tracking = data.get("tracking")
                             if tracking and tracking in orders:
-                                # تغییر وضعیت به pending_payment اگر رد شده بود یا هر وضعیت دیگه‌ای
+                                # ========== بخش کلیدی اصلاح شده ==========
+                                # اگر وضعیت payment_verified نباشه، به pending_payment تغییر بده
                                 if orders[tracking]['status'] != 'payment_verified':
                                     orders[tracking]['status'] = 'pending_payment'
                                     save_orders()
+                                    print(f"✅ وضعیت سفارش {tracking} به pending_payment تغییر کرد")
+                                # ========================================
                                 
                                 caption = (
                                     f"📎 رسید پرداخت جدید\n\n"
