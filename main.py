@@ -6,7 +6,7 @@ import string
 from flask import Flask
 from threading import Thread
 
-# ========== تنظیمات قیمت محصولات (با حدود) ==========
+# ========== تنظیمات ==========
 PRODUCTS = {
     "سوسیس آلمانی": {"min": 1500000, "max": 1700000},
     "سوسیس بلغاری": {"min": 1500000, "max": 1700000},
@@ -62,16 +62,15 @@ def send_message(chat_id, text, keyboard=None):
     except Exception as e:
         print(f"Send error: {e}")
 
-def send_photo(chat_id, photo_path, caption=None, keyboard=None):
-    """ارسال تصویر به کاربر"""
+def send_photo(chat_id, photo_file_id, caption=None, keyboard=None):
+    """ارسال تصویر با استفاده از file_id"""
+    payload = {"chat_id": chat_id, "photo": photo_file_id}
+    if caption:
+        payload["caption"] = caption
+    if keyboard:
+        payload["reply_markup"] = keyboard
     try:
-        files = {'photo': open(photo_path, 'rb')}
-        data = {'chat_id': chat_id}
-        if caption:
-            data['caption'] = caption
-        if keyboard:
-            data['reply_markup'] = keyboard
-        r = requests.post(f"{API_URL}/sendPhoto", data=data, files=files, timeout=30)
+        r = requests.post(f"{API_URL}/sendPhoto", json=payload, timeout=30)
         print(f"Send photo status: {r.status_code}")
     except Exception as e:
         print(f"Send photo error: {e}")
@@ -91,7 +90,6 @@ def generate_tracking_code():
     return ''.join(random.choices(string.digits, k=6))
 
 def calculate_price_range(product_prices, quantity_text):
-    """محاسبه حدود قیمت بر اساس وزن"""
     weight = QUANTITIES.get(quantity_text, 0)
     min_price = int(product_prices['min'] * weight)
     max_price = int(product_prices['max'] * weight)
@@ -102,9 +100,8 @@ def remove_keyboard():
 
 def get_order_status_text(status):
     status_map = {
-        "registered": "📝 ثبت اولیه، در انتظار تولید",
-        "calculating": "🏭 تولید محصول، در مرحله محاسبه قیمت",
-        "pending_payment": "💰 تعیین قیمت، در انتظار ارسال رسید پرداخت",
+        "registered": "📝 ثبت اولیه سفارش و در انتظار تولید",
+        "pending_payment": "🏭 تولید محصول و در انتظار ارسال رسید پرداخت",
         "payment_verified": "✅ رسید پرداخت ارسال و تایید شده",
         "payment_rejected": "❌ رد رسید پرداخت"
     }
@@ -155,23 +152,22 @@ def build_edit_cancel_keyboard(tracking):
 
 def build_admin_panel():
     keyboard = [
-        [{"text": "📋 سفارش‌های باز (تایید تولید)"}],
+        [{"text": "📋 سفارش‌های باز (ثبت اولیه)"}],
         [{"text": "💰 سفارش‌های پرداخت نشده"}],
-        [{"text": "📋 لیست همه سفارش‌ها"}],
-        [{"text": "🔄 تغییر وضعیت سفارش"}]
+        [{"text": "📋 لیست همه سفارش‌ها"}]
     ]
     return {"keyboard": keyboard, "resize_keyboard": True}
 
-def build_admin_confirm_keyboard(tracking, action):
+def build_admin_confirm_keyboard(tracking):
     """کیبورد تایید/رد برای ادمین"""
     keyboard = [
-        [{"text": f"✅ تایید {action} {tracking}"}],
-        [{"text": f"❌ رد {action} {tracking}"}],
+        [{"text": f"✅ تایید رسید {tracking}"}],
+        [{"text": f"❌ رد رسید {tracking}"}],
         [{"text": "🔙 بازگشت"}]
     ]
     return {"keyboard": keyboard, "resize_keyboard": True}
 
-# ========== مدیریت ثبت سفارش (با قیمت حدودی) ==========
+# ========== مدیریت ثبت سفارش ==========
 def start_new_order(chat_id):
     user_data[chat_id] = {
         "state": "PRODUCT_SELECTION",
@@ -207,21 +203,18 @@ def handle_product_selection(chat_id, text):
 
 def handle_quantity_selection(chat_id, text):
     if text in QUANTITIES:
-        # محاسبه حدود قیمت
         min_price, max_price = calculate_price_range(
             user_data[chat_id]["current_prices"], 
             text
         )
         price_range_text = f"{min_price:,} - {max_price:,} تومان"
-        
-        # اضافه کردن به سبد خرید (قیمت دقیقاً مشخص نیست، میانگین می‌گیریم برای محاسبات بعدی)
         avg_price = (min_price + max_price) // 2
         item = {
             "product": user_data[chat_id]["current_product"],
             "quantity_text": text,
             "quantity_kg": QUANTITIES[text],
             "price_range": price_range_text,
-            "avg_price": avg_price  # برای محاسبات موقت
+            "avg_price": avg_price
         }
         user_data[chat_id]["items"].append(item)
         user_data[chat_id]["total_price"] += avg_price
@@ -407,11 +400,10 @@ def finalize_order(chat_id):
     tracking = data.get("tracking", generate_tracking_code())
     data["tracking"] = tracking
     data["status"] = "registered"  # وضعیت اولیه
+    data["chat_id"] = chat_id  # ذخیره chat_id برای اطلاع‌رسانی بعدی
 
-    # ذخیره سفارش
     orders[tracking] = data.copy()
 
-    # ارسال به ادمین
     order_msg = (
         f"📦 سفارش جدید ثبت شد!\n\n"
         f"🆔 کد پیگیری: {tracking}\n"
@@ -446,7 +438,6 @@ def finalize_order(chat_id):
 
 # ========== مدیریت ارسال رسید پرداخت ==========
 def handle_receipt_upload(chat_id, text):
-    """مرحله اول: دریافت کد پیگیری برای ارسال رسید"""
     if text == "💰 ارسال رسید پرداخت":
         send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش خود را وارد کنید:", remove_keyboard())
         user_data[chat_id] = {"state": "RECEIPT_GET_TRACKING"}
@@ -454,7 +445,6 @@ def handle_receipt_upload(chat_id, text):
         send_message(chat_id, "لطفاً از دکمه‌های منو استفاده کنید.", build_main_menu())
 
 def handle_receipt_tracking(chat_id, text):
-    """مرحله دوم: بررسی کد پیگیری و درخواست آپلود تصویر"""
     tracking = normalize_persian_numbers(text.strip())
     if tracking in orders:
         order = orders[tracking]
@@ -480,71 +470,38 @@ def handle_receipt_tracking(chat_id, text):
     else:
         send_message(chat_id, "❌ کد پیگیری نامعتبر است. لطفاً دوباره وارد کنید یا /start را بزنید.")
 
-def handle_receipt_photo(chat_id, file_id, file_size):
-    """دریافت تصویر رسید از کاربر"""
-    data = user_data.get(chat_id, {})
-    if data.get("state") == "RECEIPT_UPLOAD":
-        tracking = data.get("tracking")
-        if tracking and tracking in orders:
-            # ارسال تصویر به ادمین با دکمه‌های تایید/رد
-            caption = (
-                f"📎 رسید پرداخت جدید\n\n"
-                f"🆔 کد پیگیری: {tracking}\n"
-                f"👤 کاربر: {orders[tracking]['name']}\n"
-                f"📞 تلفن: {orders[tracking]['phone']}\n"
-                f"💰 مبلغ: {orders[tracking].get('final_price', 'نامشخص')} تومان"
-            )
-            # ذخیره موقت فایل برای ارسال به ادمین
-            keyboard = build_admin_confirm_keyboard(tracking, "رسید")
-            send_photo(ADMIN_ID, file_path, caption, keyboard)
-            
-            send_message(chat_id, "✅ رسید شما با موفقیت ارسال شد.\nمنتظر تأیید ادمین باشید.", build_main_menu())
-            user_data.pop(chat_id, None)
-        else:
-            send_message(chat_id, "❌ خطا در ارسال رسید. لطفاً مجدداً تلاش کنید.", build_main_menu())
-            user_data.pop(chat_id, None)
-    else:
-        send_message(chat_id, "برای ارسال رسید، ابتدا از گزینه 'ارسال رسید پرداخت' استفاده کنید.", build_main_menu())
-
-# ========== مدیریت ادمین (با ورود ADMZ) ==========
+# ========== مدیریت ادمین ==========
 def handle_admin_command(chat_id, command):
-    """پردازش دستورات ادمین"""
-    if command == "📋 سفارش‌های باز (تایید تولید)":
+    if command == "📋 سفارش‌های باز (ثبت اولیه)":
         # سفارش‌های با وضعیت registered
         open_orders = [t for t, o in orders.items() if o['status'] == 'registered']
         if not open_orders:
-            send_message(chat_id, "📭 هیچ سفارش جدیدی برای تایید وجود ندارد.", build_admin_panel())
+            send_message(chat_id, "📭 هیچ سفارش جدیدی برای تعیین قیمت وجود ندارد.", build_admin_panel())
             return
         
-        msg = "📋 سفارش‌های جدید (در انتظار تایید تولید):\n\n"
+        msg = "📋 سفارش‌های جدید (ثبت اولیه) - برای تعیین قیمت:\n\n"
         for tracking in open_orders:
-            order = orders[tracking]
-            msg += f"🆔 {tracking} | {order['name']} | {order['product']}\n"
-        
-        keyboard = {"keyboard": [
-            [{"text": "✅ تایید همه سفارش‌ها"}],
-            [{"text": "🔙 بازگشت"}]
-        ], "resize_keyboard": True}
-        msg += "\n🔽 برای تایید همه و انتقال به مرحله محاسبه قیمت، دکمه زیر را بزنید."
-        send_message(chat_id, msg, keyboard)
-        user_data[chat_id] = {"state": "ADMIN_CONFIRM_ALL"}
-    
-    elif command == "💰 سفارش‌های پرداخت نشده":
-        # سفارش‌های با وضعیت calculating
-        calc_orders = [t for t, o in orders.items() if o['status'] == 'calculating']
-        if not calc_orders:
-            send_message(chat_id, "📭 هیچ سفارشی در مرحله محاسبه قیمت وجود ندارد.", build_admin_panel())
-            return
-        
-        msg = "💰 سفارش‌های در مرحله محاسبه قیمت:\n\n"
-        for tracking in calc_orders:
             order = orders[tracking]
             total = order.get('total_price', 0)
             msg += f"🆔 {tracking} | {order['name']} | قیمت تقریبی: {total:,} تومان\n"
         
-        msg += "\n🔑 برای تعیین قیمت نهایی و تغییر وضعیت، کد پیگیری سفارش را وارد کنید."
+        msg += "\n🔑 برای تعیین قیمت نهایی، کد پیگیری سفارش را وارد کنید."
         send_message(chat_id, msg, remove_keyboard())
         user_data[chat_id] = {"state": "ADMIN_SET_PRICE_GET_TRACKING"}
+    
+    elif command == "💰 سفارش‌های پرداخت نشده":
+        # سفارش‌های با وضعیت pending_payment
+        pending_orders = [t for t, o in orders.items() if o['status'] == 'pending_payment']
+        if not pending_orders:
+            send_message(chat_id, "📭 هیچ سفارشی در انتظار رسید پرداخت وجود ندارد.", build_admin_panel())
+            return
+        
+        msg = "💰 سفارش‌های در انتظار رسید پرداخت:\n\n"
+        for tracking in pending_orders:
+            order = orders[tracking]
+            final_price = order.get('final_price', 'نامشخص')
+            msg += f"🆔 {tracking} | {order['name']} | قیمت نهایی: {final_price:,} تومان\n"
+        send_message(chat_id, msg, build_admin_panel())
     
     elif command == "📋 لیست همه سفارش‌ها":
         if not orders:
@@ -554,44 +511,19 @@ def handle_admin_command(chat_id, command):
         for tracking, order in orders.items():
             status_emoji = {
                 "registered": "📝",
-                "calculating": "🏭",
                 "pending_payment": "💰",
                 "payment_verified": "✅",
                 "payment_rejected": "❌"
             }.get(order['status'], "❓")
             msg += f"{status_emoji} {tracking} | {order['name']} | {get_order_status_text(order['status'])}\n"
         send_message(chat_id, msg, build_admin_panel())
-    
-    elif command == "🔄 تغییر وضعیت سفارش":
-        send_message(chat_id, 
-            "🔑 لطفاً کد پیگیری سفارش را وارد کنید.\n"
-            "(کد پیگیری را می‌توانید از لیست سفارش‌ها کپی کنید)",
-            remove_keyboard()
-        )
-        user_data[chat_id] = {"state": "ADMIN_CHANGE_STATUS_GET_TRACKING"}
-
-def handle_admin_confirm_all(chat_id, text):
-    """تایید همه سفارش‌های registered"""
-    if text == "✅ تایید همه سفارش‌ها":
-        updated = 0
-        for tracking, order in orders.items():
-            if order['status'] == 'registered':
-                order['status'] = 'calculating'
-                updated += 1
-        send_message(chat_id, f"✅ {updated} سفارش به مرحله 'محاسبه قیمت' منتقل شدند.", build_admin_panel())
-        user_data.pop(chat_id, None)
-    elif text == "🔙 بازگشت":
-        send_message(chat_id, "به پنل مدیریت بازگشتید.", build_admin_panel())
-        user_data.pop(chat_id, None)
-    else:
-        send_message(chat_id, "لطفاً دکمه تایید همه را بزنید.")
 
 def handle_admin_set_price(chat_id, text):
-    """تعیین قیمت نهایی برای سفارش"""
+    """تعیین قیمت نهایی برای سفارش‌های registered"""
     state = user_data.get(chat_id, {}).get("state")
     if state == "ADMIN_SET_PRICE_GET_TRACKING":
         tracking = normalize_persian_numbers(text.strip())
-        if tracking in orders and orders[tracking]['status'] == 'calculating':
+        if tracking in orders and orders[tracking]['status'] == 'registered':
             user_data[chat_id]["admin_tracking"] = tracking
             user_data[chat_id]["state"] = "ADMIN_SET_PRICE_ENTER"
             send_message(chat_id, 
@@ -602,7 +534,7 @@ def handle_admin_set_price(chat_id, text):
                 remove_keyboard()
             )
         else:
-            send_message(chat_id, "❌ کد پیگیری نامعتبر یا سفارش در مرحله محاسبه قیمت نیست.")
+            send_message(chat_id, "❌ کد پیگیری نامعتبر یا سفارش در مرحله ثبت اولیه نیست.")
             user_data.pop(chat_id, None)
     
     elif state == "ADMIN_SET_PRICE_ENTER":
@@ -617,7 +549,7 @@ def handle_admin_set_price(chat_id, text):
                 orders[tracking]['status'] = 'pending_payment'
                 send_message(chat_id, 
                     f"✅ قیمت نهایی سفارش {tracking} به {final_price:,} تومان تغییر کرد.\n"
-                    f"وضعیت به 'در انتظار ارسال رسید پرداخت' تغییر یافت.",
+                    f"وضعیت به '{get_order_status_text('pending_payment')}' تغییر یافت.",
                     build_admin_panel()
                 )
                 # اطلاع به کاربر
@@ -632,48 +564,6 @@ def handle_admin_set_price(chat_id, text):
         except ValueError:
             send_message(chat_id, "❌ لطفاً یک عدد معتبر وارد کنید (مثلاً 1500000):")
 
-def handle_admin_status_change(chat_id, text):
-    """تغییر وضعیت دستی سفارش"""
-    state = user_data.get(chat_id, {}).get("state")
-    if state == "ADMIN_CHANGE_STATUS_GET_TRACKING":
-        tracking = normalize_persian_numbers(text.strip())
-        if tracking in orders:
-            user_data[chat_id]["admin_tracking"] = tracking
-            user_data[chat_id]["state"] = "ADMIN_CHANGE_STATUS_SELECT"
-            keyboard = {"keyboard": [
-                [{"text": "🏭 تولید محصول، در مرحله محاسبه قیمت"}],
-                [{"text": "💰 تعیین قیمت، در انتظار ارسال رسید"}],
-                [{"text": "✅ رسید پرداخت ارسال و تایید شده"}],
-                [{"text": "❌ رد رسید پرداخت"}],
-                [{"text": "🔙 بازگشت"}]
-            ], "resize_keyboard": True}
-            send_message(chat_id, f"وضعیت فعلی: {get_order_status_text(orders[tracking]['status'])}\nوضعیت جدید را انتخاب کنید:", keyboard)
-        else:
-            send_message(chat_id, "❌ کد پیگیری نامعتبر است.")
-            user_data.pop(chat_id, None)
-    
-    elif state == "ADMIN_CHANGE_STATUS_SELECT":
-        tracking = user_data[chat_id].get("admin_tracking")
-        if tracking and tracking in orders:
-            status_map = {
-                "🏭 تولید محصول، در مرحله محاسبه قیمت": "calculating",
-                "💰 تعیین قیمت، در انتظار ارسال رسید": "pending_payment",
-                "✅ رسید پرداخت ارسال و تایید شده": "payment_verified",
-                "❌ رد رسید پرداخت": "payment_rejected"
-            }
-            new_status = status_map.get(text)
-            if new_status:
-                orders[tracking]['status'] = new_status
-                send_message(chat_id, f"✅ وضعیت سفارش {tracking} به '{get_order_status_text(new_status)}' تغییر کرد.", build_admin_panel())
-                user_data.pop(chat_id, None)
-            elif text == "🔙 بازگشت":
-                send_message(chat_id, "به پنل مدیریت بازگشتید.", build_admin_panel())
-                user_data.pop(chat_id, None)
-            else:
-                send_message(chat_id, "لطفاً یکی از گزینه‌ها را انتخاب کنید.")
-        else:
-            send_message(chat_id, "❌ خطا در تغییر وضعیت.")
-
 def handle_admin_receipt_action(chat_id, text):
     """پردازش تایید/رد رسید توسط ادمین"""
     if text.startswith("✅ تایید رسید"):
@@ -681,7 +571,6 @@ def handle_admin_receipt_action(chat_id, text):
         if tracking in orders:
             orders[tracking]['status'] = 'payment_verified'
             send_message(chat_id, f"✅ رسید سفارش {tracking} تایید شد.", build_admin_panel())
-            # اطلاع به کاربر
             send_message(orders[tracking]['chat_id'],
                 f"✅ رسید پرداخت شما برای سفارش {tracking} تایید شد.\n"
                 f"سفارش شما در مرحله تولید قرار گرفت."
@@ -695,7 +584,6 @@ def handle_admin_receipt_action(chat_id, text):
         if tracking in orders:
             orders[tracking]['status'] = 'payment_rejected'
             send_message(chat_id, f"❌ رسید سفارش {tracking} رد شد.", build_admin_panel())
-            # اطلاع به کاربر
             send_message(orders[tracking]['chat_id'],
                 f"❌ رسید پرداخت شما برای سفارش {tracking} رد شد.\n"
                 f"لطفاً با پشتیبانی تماس بگیرید."
@@ -709,6 +597,43 @@ def handle_admin_receipt_action(chat_id, text):
         user_data.pop(chat_id, None)
     else:
         send_message(chat_id, "لطفاً یکی از گزینه‌ها را انتخاب کنید.")
+
+# ========== نمایش خلاصه سفارش برای کاربر ==========
+def show_order_summary(chat_id, tracking):
+    order = orders.get(tracking)
+    if not order:
+        send_message(chat_id, "❌ سفارشی با این کد پیدا نشد.")
+        return False
+    
+    msg = (
+        f"📋 اطلاعات سفارش:\n\n"
+        f"🆔 کد پیگیری: {tracking}\n"
+        f"📊 وضعیت: {get_order_status_text(order['status'])}\n"
+        f"🛒 محصولات:\n"
+    )
+    for item in order['items']:
+        msg += f"  - {item['product']} | {item['quantity_text']} | حدود قیمت: {item['price_range']}\n"
+    
+    if order.get('final_price'):
+        msg += f"\n💰 قیمت نهایی: {order['final_price']:,} تومان\n"
+    else:
+        total = order.get('total_price', 0)
+        msg += f"\n💰 قیمت تقریبی: {total:,} تومان\n"
+    
+    msg += f"👤 نام: {order['name']}\n"
+    msg += f"📞 تلفن: {order['phone']}\n"
+    
+    if order.get("delivery"):
+        msg += (
+            f"🚚 ارسال: بله\n"
+            f"📍 آدرس: {order.get('address', 'نامشخص')}\n"
+            f"📮 کدپستی: {order.get('postal_code', 'نامشخص')}\n"
+        )
+    else:
+        msg += "🚚 ارسال: نه (تحویل حضوری)\n"
+    
+    send_message(chat_id, msg)
+    return True
 
 # ========== حلقه اصلی ==========
 def bot_loop():
@@ -738,41 +663,22 @@ def bot_loop():
                         
                         # ===== مدیریت دستورات ادمین =====
                         if chat_id_str == ADMIN_ID:
-                            # دکمه‌های پنل ادمین
-                            if text in ["📋 سفارش‌های باز (تایید تولید)", "💰 سفارش‌های پرداخت نشده", "📋 لیست همه سفارش‌ها", "🔄 تغییر وضعیت سفارش"]:
+                            if text in ["📋 سفارش‌های باز (ثبت اولیه)", "💰 سفارش‌های پرداخت نشده", "📋 لیست همه سفارش‌ها"]:
                                 handle_admin_command(chat_id, text)
                                 continue
                             
-                            # تایید همه سفارش‌ها
-                            if user_data.get(chat_id, {}).get("state") == "ADMIN_CONFIRM_ALL":
-                                handle_admin_confirm_all(chat_id, text)
-                                continue
-                            
-                            # تنظیم قیمت
                             if user_data.get(chat_id, {}).get("state") in ["ADMIN_SET_PRICE_GET_TRACKING", "ADMIN_SET_PRICE_ENTER"]:
                                 handle_admin_set_price(chat_id, text)
                                 continue
                             
-                            # تغییر وضعیت
-                            if user_data.get(chat_id, {}).get("state") in ["ADMIN_CHANGE_STATUS_GET_TRACKING", "ADMIN_CHANGE_STATUS_SELECT"]:
-                                handle_admin_status_change(chat_id, text)
-                                continue
-                            
-                            # تایید/رد رسید
                             if text.startswith("✅ تایید رسید") or text.startswith("❌ رد رسید") or text == "🔙 بازگشت":
                                 handle_admin_receipt_action(chat_id, text)
                                 continue
                         
                         # ===== دریافت تصویر رسید از کاربر =====
                         if "photo" in message and user_data.get(chat_id, {}).get("state") == "RECEIPT_UPLOAD":
-                            # دریافت اطلاعات فایل
-                            photo = message["photo"][-1]  # آخرین (بهترین کیفیت)
+                            photo = message["photo"][-1]
                             file_id = photo["file_id"]
-                            file_size = photo.get("file_size", 0)
-                            
-                            # ذخیره فایل (فعلاً فقط ID رو نگه می‌داریم)
-                            # برای ارسال به ادمین باید فایل رو دانلود کنیم. بله API مستقیم file_id رو قبول می‌کنه.
-                            # اما ساده‌تر: file_id رو به ادمین ارسال می‌کنیم (نیاز به دانلود نیست)
                             data = user_data[chat_id]
                             tracking = data.get("tracking")
                             if tracking and tracking in orders:
@@ -783,9 +689,8 @@ def bot_loop():
                                     f"📞 تلفن: {orders[tracking]['phone']}\n"
                                     f"💰 مبلغ: {orders[tracking].get('final_price', 'نامشخص')} تومان"
                                 )
-                                keyboard = build_admin_confirm_keyboard(tracking, "رسید")
-                                # ارسال تصویر به ادمین با استفاده از file_id
-                                send_photo(ADMIN_ID, file_id, caption, keyboard)  # باید تابع رو اصلاح کنیم
+                                keyboard = build_admin_confirm_keyboard(tracking)
+                                send_photo(ADMIN_ID, file_id, caption, keyboard)
                                 send_message(chat_id, "✅ رسید شما با موفقیت ارسال شد.\nمنتظر تأیید ادمین باشید.", build_main_menu())
                                 user_data.pop(chat_id, None)
                             else:
@@ -927,44 +832,6 @@ def bot_loop():
         except Exception as e:
             print(f"خطا در حلقه بات: {e}")
             time.sleep(3)
-
-# ========== تابع نمایش خلاصه سفارش ==========
-def show_order_summary(chat_id, tracking):
-    order = orders.get(tracking)
-    if not order:
-        send_message(chat_id, "❌ سفارشی با این کد پیدا نشد.")
-        return False
-    
-    msg = (
-        f"📋 اطلاعات سفارش:\n\n"
-        f"🆔 کد پیگیری: {tracking}\n"
-        f"📊 وضعیت: {get_order_status_text(order['status'])}\n"
-        f"🛒 محصولات:\n"
-    )
-    total_price = 0
-    for item in order['items']:
-        msg += f"  - {item['product']} | {item['quantity_text']} | حدود قیمت: {item['price_range']}\n"
-        total_price += item.get('avg_price', 0)
-    
-    if order.get('final_price'):
-        msg += f"\n💰 قیمت نهایی: {order['final_price']:,} تومان\n"
-    else:
-        msg += f"\n💰 قیمت تقریبی: {total_price:,} تومان\n"
-    
-    msg += f"👤 نام: {order['name']}\n"
-    msg += f"📞 تلفن: {order['phone']}\n"
-    
-    if order.get("delivery"):
-        msg += (
-            f"🚚 ارسال: بله\n"
-            f"📍 آدرس: {order.get('address', 'نامشخص')}\n"
-            f"📮 کدپستی: {order.get('postal_code', 'نامشخص')}\n"
-        )
-    else:
-        msg += "🚚 ارسال: نه (تحویل حضوری)\n"
-    
-    send_message(chat_id, msg)
-    return True
 
 # ========== اجرا ==========
 if __name__ == "__main__":
