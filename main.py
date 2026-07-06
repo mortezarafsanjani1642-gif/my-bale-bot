@@ -100,8 +100,8 @@ def bot_loop():
 
 if __name__ == "__main__":
     # اجرای وب‌سرور در یک رشته جداگانه
-    t = Thread(target=run_flask)
-    t.start()
+    # t = Thread(target=run_flask)
+    # t.start()
 
     # اجرای حلقه بات در رشته اصلی
     bot_loop()
