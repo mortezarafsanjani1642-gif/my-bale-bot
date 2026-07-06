@@ -755,9 +755,17 @@ def bot_loop():
                             data = user_data[chat_id]
                             tracking = data.get("tracking")
                             if tracking and tracking in orders:
+                                # تغییر وضعیت به pending_payment اگر رد شده بود
                                 if orders[tracking]['status'] == 'payment_rejected':
                                     orders[tracking]['status'] = 'pending_payment'
                                     save_orders()
+                                
+                                # همچنین اگر ثبت اولیه بود یا هر وضعیت دیگری، به pending_payment تغییر بده
+                                # چون کاربر رسید ارسال کرده
+                                if orders[tracking]['status'] != 'payment_verified':
+                                    orders[tracking]['status'] = 'pending_payment'
+                                    save_orders()
+                                
                                 caption = (
                                     f"📎 رسید پرداخت جدید\n\n"
                                     f"🆔 کد پیگیری: {tracking}\n"
