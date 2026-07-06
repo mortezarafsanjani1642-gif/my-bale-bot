@@ -11,10 +11,8 @@ from threading import Thread
 SETTINGS_FILE = "settings.json"
 ORDERS_FILE = "orders.json"
 
-# تاریخ تولید (می‌توانید تغییر دهید)
 NEXT_PRODUCTION_DATE = "۱۵ تیر ۱۴۰۴"
 
-# لیست مقادیر وزن (ثابت)
 QUANTITIES = {
     "نیم کیلو": 0.5,
     "یک کیلو": 1.0,
@@ -25,7 +23,6 @@ QUANTITIES = {
 }
 
 def load_settings():
-    """بارگذاری تنظیمات از فایل"""
     try:
         if os.path.exists(SETTINGS_FILE):
             with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
@@ -157,7 +154,8 @@ def get_order_status_text(status):
         "registered": "📝 ثبت اولیه سفارش و در انتظار تولید",
         "pending_payment": "🏭 تولید محصول و در انتظار ارسال رسید پرداخت",
         "payment_verified": "✅ تایید رسید پرداخت و اتمام سفارش",
-        "payment_rejected": "❌ رد رسید، در انتظار ارسال مجدد"
+        "payment_rejected": "❌ رد رسید، در انتظار ارسال مجدد",
+        "cancelled": "🚫 لغو شده توسط ادمین"
     }
     return status_map.get(status, "نامشخص")
 
@@ -218,7 +216,19 @@ def build_admin_panel():
         [{"text": "⏳ رسیدهای در انتظار تایید"}],
         [{"text": "📋 لیست همه سفارش‌ها"}],
         [{"text": "🛠 مدیریت محصولات"}],
-        [{"text": "🔓 وضعیت سفارش‌گذاری"}]
+        [{"text": "🔓 وضعیت سفارش‌گذاری"}],
+        [{"text": "🚫 لغو سفارش"}],
+        [{"text": "🗑️ حذف همیشگی سفارش"}],
+        [{"text": "📊 داشبورد"}]
+    ]
+    return {"keyboard": keyboard, "resize_keyboard": True}
+
+def build_dashboard_menu():
+    """منوی داشبورد با دو گزینه"""
+    keyboard = [
+        [{"text": "📊 اطلاعات وضعیت سفارش‌ها"}],
+        [{"text": "📦 محصولات تولید شده"}],
+        [{"text": "🔙 بازگشت"}]
     ]
     return {"keyboard": keyboard, "resize_keyboard": True}
 
@@ -230,7 +240,7 @@ def build_admin_confirm_keyboard(tracking):
     ]
     return {"keyboard": keyboard, "resize_keyboard": True}
 
-# ========== مدیریت محصولات توسط ادمین ==========
+# ========== مدیریت محصولات ==========
 def handle_admin_products(chat_id, command):
     if command == "🛠 مدیریت محصولات":
         keyboard = {"keyboard": [
@@ -329,6 +339,130 @@ def handle_admin_order_status(chat_id):
     
     status_text = "باز ✅" if new_status == "open" else "بسته ❌"
     send_message(chat_id, f"🔓 وضعیت سفارش‌گذاری به '{status_text}' تغییر کرد.", build_admin_panel())
+
+# ========== مدیریت لغو سفارش توسط ادمین ==========
+def handle_admin_cancel_order(chat_id, text):
+    state = user_data.get(chat_id, {}).get("state")
+    if state == "ADMIN_CANCEL_GET_TRACKING":
+        tracking = normalize_persian_numbers(text.strip())
+        if tracking in orders:
+            orders[tracking]['status'] = 'cancelled'
+            save_orders()
+            try:
+                user_chat_id = orders[tracking].get('chat_id')
+                if user_chat_id:
+                    send_message(user_chat_id,
+                        f"🚫 سفارش شما با کد پیگیری {tracking} توسط مدیر لغو شد.\n"
+                        f"در صورت نیاز با پشتیبانی تماس بگیرید."
+                    )
+            except:
+                pass
+            send_message(chat_id, f"✅ سفارش {tracking} با موفقیت لغو شد و به کاربر اطلاع داده شد.", build_admin_panel())
+            user_data.pop(chat_id, None)
+        else:
+            send_message(chat_id, "❌ کد پیگیری نامعتبر است. لطفاً دوباره وارد کنید:", remove_keyboard())
+    else:
+        send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش مورد نظر برای لغو را وارد کنید:", remove_keyboard())
+        user_data[chat_id] = {"state": "ADMIN_CANCEL_GET_TRACKING"}
+
+# ========== مدیریت حذف همیشگی سفارش ==========
+def handle_admin_delete_order(chat_id, text):
+    state = user_data.get(chat_id, {}).get("state")
+    if state == "ADMIN_DELETE_GET_TRACKING":
+        tracking = normalize_persian_numbers(text.strip())
+        if tracking in orders:
+            order = orders.pop(tracking)
+            save_orders()
+            try:
+                user_chat_id = order.get('chat_id')
+                if user_chat_id:
+                    send_message(user_chat_id,
+                        f"🗑️ سفارش شما با کد پیگیری {tracking} به طور کامل از سیستم حذف شد."
+                    )
+            except:
+                pass
+            send_message(chat_id, f"✅ سفارش {tracking} با موفقیت حذف شد.", build_admin_panel())
+            user_data.pop(chat_id, None)
+        else:
+            send_message(chat_id, "❌ کد پیگیری نامعتبر است. لطفاً دوباره وارد کنید:", remove_keyboard())
+    else:
+        send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش مورد نظر برای حذف کامل را وارد کنید:", remove_keyboard())
+        user_data[chat_id] = {"state": "ADMIN_DELETE_GET_TRACKING"}
+
+# ========== داشبورد (جدید) ==========
+def handle_admin_dashboard(chat_id):
+    """نمایش منوی داشبورد"""
+    send_message(chat_id, "📊 داشبورد مدیریت:\nلطفاً یکی از گزینه‌های زیر را انتخاب کنید:", build_dashboard_menu())
+    user_data[chat_id] = {"state": "ADMIN_DASHBOARD_MENU"}
+
+def handle_dashboard_status(chat_id):
+    """نمایش آمار وضعیت سفارش‌ها"""
+    if not orders:
+        send_message(chat_id, "📭 هیچ سفارشی در سیستم ثبت نشده است.", build_admin_panel())
+        user_data.pop(chat_id, None)
+        return
+    
+    stats = {
+        "registered": 0,
+        "pending_payment": 0,
+        "payment_verified": 0,
+        "payment_rejected": 0,
+        "cancelled": 0
+    }
+    
+    for order in orders.values():
+        status = order.get('status', 'registered')
+        if status in stats:
+            stats[status] += 1
+    
+    total = sum(stats.values())
+    
+    msg = (
+        f"📊 اطلاعات وضعیت سفارش‌ها:\n\n"
+        f"📝 ثبت اولیه: {stats['registered']} سفارش\n"
+        f"💰 در انتظار رسید: {stats['pending_payment']} سفارش\n"
+        f"✅ تایید شده: {stats['payment_verified']} سفارش\n"
+        f"❌ رد شده: {stats['payment_rejected']} سفارش\n"
+        f"🚫 لغو شده: {stats['cancelled']} سفارش\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"📦 مجموع کل: {total} سفارش"
+    )
+    
+    send_message(chat_id, msg, build_dashboard_menu())
+
+def handle_dashboard_products(chat_id):
+    """نمایش آمار محصولات تولید شده (وضعیت payment_verified)"""
+    if not orders:
+        send_message(chat_id, "📭 هیچ سفارشی در سیستم ثبت نشده است.", build_admin_panel())
+        user_data.pop(chat_id, None)
+        return
+    
+    # بررسی سفارش‌های با وضعیت payment_verified
+    product_stats = {}
+    for tracking, order in orders.items():
+        if order.get('status') == 'payment_verified':
+            for item in order.get('items', []):
+                product_name = item.get('product', 'نامشخص')
+                if product_name in product_stats:
+                    product_stats[product_name] += 1
+                else:
+                    product_stats[product_name] = 1
+    
+    if not product_stats:
+        send_message(chat_id, "📭 هیچ محصولی با وضعیت 'تایید شده' یافت نشد.", build_dashboard_menu())
+        return
+    
+    # مرتب‌سازی از بیشترین به کمترین
+    sorted_products = sorted(product_stats.items(), key=lambda x: x[1], reverse=True)
+    
+    msg = "📦 آمار محصولات تولید شده (تایید شده):\n\n"
+    for idx, (name, count) in enumerate(sorted_products, 1):
+        msg += f"{idx}. {name}: {count} سفارش\n"
+    
+    total = sum(product_stats.values())
+    msg += f"\n📊 مجموع کل: {total} سفارش تایید شده"
+    
+    send_message(chat_id, msg, build_dashboard_menu())
 
 # ========== مدیریت ثبت سفارش ==========
 def start_new_order(chat_id):
@@ -642,27 +776,48 @@ def handle_receipt_tracking(chat_id, text):
     else:
         send_message(chat_id, "❌ کد پیگیری نامعتبر است. لطفاً دوباره وارد کنید یا /start را بزنید.")
 
-# ========== مدیریت ادمین ==========
+# ========== مدیریت ادمین (بخش اصلی) ==========
 def handle_admin_command(chat_id, command):
     # مدیریت محصولات
     if command == "🛠 مدیریت محصولات":
         handle_admin_products(chat_id, command)
         return
-    
     if command == "➕ افزودن محصول جدید":
         handle_admin_products(chat_id, command)
         return
-    
     if command == "📋 لیست محصولات":
         handle_admin_products(chat_id, command)
         return
-    
     if command == "❌ حذف محصول":
         handle_admin_products(chat_id, command)
         return
     
+    # مدیریت وضعیت سفارش‌گذاری
     if command == "🔓 وضعیت سفارش‌گذاری":
         handle_admin_order_status(chat_id)
+        return
+    
+    # مدیریت لغو سفارش
+    if command == "🚫 لغو سفارش":
+        handle_admin_cancel_order(chat_id, None)
+        return
+    
+    # مدیریت حذف همیشگی
+    if command == "🗑️ حذف همیشگی سفارش":
+        handle_admin_delete_order(chat_id, None)
+        return
+    
+    # داشبورد
+    if command == "📊 داشبورد":
+        handle_admin_dashboard(chat_id)
+        return
+    
+    # منوی داشبورد
+    if command == "📊 اطلاعات وضعیت سفارش‌ها":
+        handle_dashboard_status(chat_id)
+        return
+    if command == "📦 محصولات تولید شده":
+        handle_dashboard_products(chat_id)
         return
     
     # بقیه دستورات
@@ -745,7 +900,8 @@ def handle_admin_command(chat_id, command):
                 "registered": "📝",
                 "pending_payment": "💰",
                 "payment_verified": "✅",
-                "payment_rejected": "❌"
+                "payment_rejected": "❌",
+                "cancelled": "🚫"
             }.get(order['status'], "❓")
             product_name = order['items'][0]['product'] if order['items'] else "نامشخص"
             msg += f"{status_emoji} {tracking} | {order['name']} | {product_name} | {get_order_status_text(order['status'])}\n"
@@ -874,6 +1030,8 @@ def show_order_summary(chat_id, tracking):
     
     if order['status'] == 'payment_rejected':
         msg += "\n⚠️ رسید شما رد شده است. لطفاً مجدداً رسید را ارسال کنید."
+    elif order['status'] == 'cancelled':
+        msg += "\n🚫 این سفارش توسط مدیر لغو شده است."
     
     send_message(chat_id, msg)
     return True
@@ -911,9 +1069,23 @@ def bot_loop():
                                             "✅ رسیدهای تایید شده", "❌ رسیدهای رد شده", 
                                             "⏳ رسیدهای در انتظار تایید", "📋 لیست همه سفارش‌ها",
                                             "🛠 مدیریت محصولات", "➕ افزودن محصول جدید", 
-                                            "📋 لیست محصولات", "❌ حذف محصول", "🔓 وضعیت سفارش‌گذاری"]
+                                            "📋 لیست محصولات", "❌ حذف محصول", "🔓 وضعیت سفارش‌گذاری",
+                                            "🚫 لغو سفارش", "🗑️ حذف همیشگی سفارش", "📊 داشبورد",
+                                            "📊 اطلاعات وضعیت سفارش‌ها", "📦 محصولات تولید شده"]
                             if text in admin_commands:
                                 handle_admin_command(chat_id, text)
+                                continue
+                            
+                            if user_data.get(chat_id, {}).get("state") == "ADMIN_DASHBOARD_MENU":
+                                if text == "📊 اطلاعات وضعیت سفارش‌ها":
+                                    handle_dashboard_status(chat_id)
+                                elif text == "📦 محصولات تولید شده":
+                                    handle_dashboard_products(chat_id)
+                                elif text == "🔙 بازگشت":
+                                    send_message(chat_id, "به پنل مدیریت بازگشتید.", build_admin_panel())
+                                    user_data.pop(chat_id, None)
+                                else:
+                                    send_message(chat_id, "لطفاً یکی از گزینه‌های منوی داشبورد را انتخاب کنید.", build_dashboard_menu())
                                 continue
                             
                             if user_data.get(chat_id, {}).get("state") in ["ADMIN_SET_PRICE_GET_TRACKING", "ADMIN_SET_PRICE_ENTER"]:
@@ -936,6 +1108,12 @@ def bot_loop():
                                 continue
                             if user_data.get(chat_id, {}).get("state") == "ADMIN_DELETE_PRODUCT":
                                 handle_delete_product(chat_id, text)
+                                continue
+                            if user_data.get(chat_id, {}).get("state") == "ADMIN_CANCEL_GET_TRACKING":
+                                handle_admin_cancel_order(chat_id, text)
+                                continue
+                            if user_data.get(chat_id, {}).get("state") == "ADMIN_DELETE_GET_TRACKING":
+                                handle_admin_delete_order(chat_id, text)
                                 continue
 
                         # ===== دریافت تصویر رسید =====
