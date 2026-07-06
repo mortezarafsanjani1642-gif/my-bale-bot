@@ -7,30 +7,71 @@ import json
 from flask import Flask
 from threading import Thread
 
-# ========== تنظیمات ==========
-PRODUCTS = {
-    "سوسیس آلمانی": {"min": 1500000, "max": 1700000},
-    "سوسیس بلغاری": {"min": 1500000, "max": 1700000},
-    "ناگت مرغ": {"min": 1500000, "max": 1700000},
-    "ناگت بوقلمون": {"min": 1500000, "max": 1700000}
-}
+# ========== تنظیمات اولیه ==========
+SETTINGS_FILE = "settings.json"
+ORDERS_FILE = "orders.json"
 
-NEXT_PRODUCTION_DATE = "۱۵ تیر ۱۴۰۴"
+def load_settings():
+    """بارگذاری تنظیمات از فایل"""
+    try:
+        if os.path.exists(SETTINGS_FILE):
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        else:
+            # تنظیمات پیش‌فرض
+            default_settings = {
+                "products": {
+                    "سوسیس آلمانی": {"min": 1500000, "max": 1700000},
+                    "سوسیس بلغاری": {"min": 1500000, "max": 1700000},
+                    "ناگت مرغ": {"min": 1500000, "max": 1700000},
+                    "ناگت بوقلمون": {"min": 1500000, "max": 1700000}
+                },
+                "order_status": "open"  # یا "closed"
+            }
+            save_settings(default_settings)
+            return default_settings
+    except Exception as e:
+        print(f"خطا در بارگذاری تنظیمات: {e}")
+        return {"products": {}, "order_status": "open"}
 
-QUANTITIES = {
-    "نیم کیلو": 0.5,
-    "یک کیلو": 1.0,
-    "یک کیلو و نیم": 1.5,
-    "دو کیلو": 2.0,
-    "دو کیلو و نیم": 2.5,
-    "سه کیلو": 3.0
-}
+def save_settings(settings):
+    """ذخیره تنظیمات در فایل"""
+    try:
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, ensure_ascii=False, indent=2)
+        print("✅ تنظیمات ذخیره شد.")
+    except Exception as e:
+        print(f"❌ خطا در ذخیره تنظیمات: {e}")
 
+def load_orders():
+    global orders
+    try:
+        if os.path.exists(ORDERS_FILE):
+            with open(ORDERS_FILE, 'r', encoding='utf-8') as f:
+                orders = json.load(f)
+            print(f"✅ {len(orders)} سفارش بارگذاری شد.")
+        else:
+            orders = {}
+    except Exception as e:
+        print(f"❌ خطا در بارگذاری سفارش‌ها: {e}")
+        orders = {}
+
+def save_orders():
+    try:
+        with open(ORDERS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(orders, f, ensure_ascii=False, indent=2)
+        print("✅ سفارش‌ها ذخیره شدند.")
+    except Exception as e:
+        print(f"❌ خطا در ذخیره سفارش‌ها: {e}")
+
+# ========== بارگذاری اولیه ==========
 TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = os.environ.get("ADMIN_ID")
 API_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
-ORDERS_FILE = "orders.json"
+settings = load_settings()
+PRODUCTS = settings.get("products", {})
+ORDER_STATUS = settings.get("order_status", "open")
 
 user_data = {}
 orders = {}
@@ -44,32 +85,6 @@ def home():
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
-
-# ========== ذخیره‌سازی ==========
-def save_orders():
-    try:
-        with open(ORDERS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(orders, f, ensure_ascii=False, indent=2)
-        print("✅ سفارش‌ها ذخیره شدند.")
-    except Exception as e:
-        print(f"❌ خطا در ذخیره: {e}")
-
-def load_orders():
-    global orders
-    try:
-        if os.path.exists(ORDERS_FILE):
-            with open(ORDERS_FILE, 'r', encoding='utf-8') as f:
-                orders = json.load(f)
-            print(f"✅ {len(orders)} سفارش بارگذاری شد.")
-        else:
-            orders = {}
-            print("📭 فایل سفارش‌ها وجود ندارد.")
-    except Exception as e:
-        print(f"❌ خطا در بارگذاری: {e}")
-        orders = {}
-
-def init_storage():
-    load_orders()
 
 # ========== توابع کمکی ==========
 def normalize_persian_numbers(text):
@@ -135,6 +150,13 @@ def get_order_status_text(status):
     }
     return status_map.get(status, "نامشخص")
 
+def refresh_products():
+    """بارگذاری مجدد محصولات از تنظیمات"""
+    global PRODUCTS, QUANTITIES
+    settings = load_settings()
+    PRODUCTS = settings.get("products", {})
+    # به‌روزرسانی QUANTITIES ثابت است
+
 # ========== کیبوردها ==========
 def build_main_menu():
     keyboard = [
@@ -185,7 +207,9 @@ def build_admin_panel():
         [{"text": "✅ رسیدهای تایید شده"}],
         [{"text": "❌ رسیدهای رد شده"}],
         [{"text": "⏳ رسیدهای در انتظار تایید"}],
-        [{"text": "📋 لیست همه سفارش‌ها"}]
+        [{"text": "📋 لیست همه سفارش‌ها"}],
+        [{"text": "🛠 مدیریت محصولات"}],
+        [{"text": "🔓 وضعیت سفارش‌گذاری"}]
     ]
     return {"keyboard": keyboard, "resize_keyboard": True}
 
@@ -197,8 +221,117 @@ def build_admin_confirm_keyboard(tracking):
     ]
     return {"keyboard": keyboard, "resize_keyboard": True}
 
-# ========== مدیریت ثبت سفارش ==========
+# ========== مدیریت محصولات توسط ادمین ==========
+def handle_admin_products(chat_id, command):
+    if command == "🛠 مدیریت محصولات":
+        keyboard = {"keyboard": [
+            [{"text": "➕ افزودن محصول جدید"}],
+            [{"text": "📋 لیست محصولات"}],
+            [{"text": "❌ حذف محصول"}],
+            [{"text": "🔙 بازگشت"}]
+        ], "resize_keyboard": True}
+        send_message(chat_id, "🛠 مدیریت محصولات:\nلطفاً یکی از گزینه‌ها را انتخاب کنید:", keyboard)
+        user_data[chat_id] = {"state": "ADMIN_PRODUCTS_MENU"}
+    
+    elif command == "➕ افزودن محصول جدید":
+        send_message(chat_id, "🔤 نام محصول را وارد کنید:", remove_keyboard())
+        user_data[chat_id] = {"state": "ADMIN_ADD_PRODUCT_NAME"}
+    
+    elif command == "📋 لیست محصولات":
+        if not PRODUCTS:
+            send_message(chat_id, "📭 هیچ محصولی ثبت نشده است.", build_admin_panel())
+            return
+        msg = "📋 لیست محصولات و قیمت‌ها:\n\n"
+        for name, price in PRODUCTS.items():
+            msg += f"🛒 {name}: {price['min']:,} - {price['max']:,} تومان\n"
+        send_message(chat_id, msg, build_admin_panel())
+        user_data.pop(chat_id, None)
+    
+    elif command == "❌ حذف محصول":
+        if not PRODUCTS:
+            send_message(chat_id, "📭 هیچ محصولی برای حذف وجود ندارد.", build_admin_panel())
+            return
+        keyboard = {"keyboard": [[{"text": p}] for p in PRODUCTS.keys()] + [[{"text": "🔙 بازگشت"}]], "resize_keyboard": True}
+        send_message(chat_id, "❌ محصول مورد نظر را برای حذف انتخاب کنید:", keyboard)
+        user_data[chat_id] = {"state": "ADMIN_DELETE_PRODUCT"}
+
+def handle_add_product_name(chat_id, text):
+    if text == "🔙 بازگشت":
+        send_message(chat_id, "به پنل مدیریت بازگشتید.", build_admin_panel())
+        user_data.pop(chat_id, None)
+        return
+    user_data[chat_id]["new_product_name"] = text
+    user_data[chat_id]["state"] = "ADMIN_ADD_PRODUCT_MIN"
+    send_message(chat_id, f"✅ نام '{text}' ثبت شد.\n\nلطفاً حداقل قیمت (به تومان) را وارد کنید:\nمثال: 1500000", remove_keyboard())
+
+def handle_add_product_min(chat_id, text):
+    try:
+        min_price = int(normalize_persian_numbers(text.strip()))
+        if min_price <= 0:
+            send_message(chat_id, "❌ قیمت باید بزرگتر از صفر باشد. دوباره وارد کنید:")
+            return
+        user_data[chat_id]["new_min"] = min_price
+        user_data[chat_id]["state"] = "ADMIN_ADD_PRODUCT_MAX"
+        send_message(chat_id, f"✅ حداقل قیمت {min_price:,} تومان ثبت شد.\n\nلطفاً حداکثر قیمت (به تومان) را وارد کنید:\nمثال: 1700000", remove_keyboard())
+    except ValueError:
+        send_message(chat_id, "❌ لطفاً یک عدد معتبر وارد کنید:")
+
+def handle_add_product_max(chat_id, text):
+    try:
+        max_price = int(normalize_persian_numbers(text.strip()))
+        name = user_data[chat_id].get("new_product_name")
+        min_price = user_data[chat_id].get("new_min")
+        if max_price <= min_price:
+            send_message(chat_id, "❌ حداکثر قیمت باید از حداقل قیمت بیشتر باشد. دوباره وارد کنید:")
+            return
+        # ذخیره محصول جدید
+        settings = load_settings()
+        settings["products"][name] = {"min": min_price, "max": max_price}
+        save_settings(settings)
+        refresh_products()
+        send_message(chat_id, f"✅ محصول '{name}' با قیمت {min_price:,} - {max_price:,} تومان اضافه شد.", build_admin_panel())
+        user_data.pop(chat_id, None)
+    except ValueError:
+        send_message(chat_id, "❌ لطفاً یک عدد معتبر وارد کنید:")
+
+def handle_delete_product(chat_id, text):
+    if text == "🔙 بازگشت":
+        send_message(chat_id, "به پنل مدیریت بازگشتید.", build_admin_panel())
+        user_data.pop(chat_id, None)
+        return
+    if text in PRODUCTS:
+        settings = load_settings()
+        del settings["products"][text]
+        save_settings(settings)
+        refresh_products()
+        send_message(chat_id, f"✅ محصول '{text}' با موفقیت حذف شد.", build_admin_panel())
+        user_data.pop(chat_id, None)
+    else:
+        send_message(chat_id, "❌ محصول انتخاب شده معتبر نیست. لطفاً از لیست انتخاب کنید.")
+
+# ========== مدیریت وضعیت سفارش‌گذاری ==========
+def handle_admin_order_status(chat_id):
+    global ORDER_STATUS
+    settings = load_settings()
+    current = settings.get("order_status", "open")
+    new_status = "closed" if current == "open" else "open"
+    settings["order_status"] = new_status
+    save_settings(settings)
+    ORDER_STATUS = new_status
+    
+    status_text = "باز ✅" if new_status == "open" else "بسته ❌"
+    send_message(chat_id, f"🔓 وضعیت سفارش‌گذاری به '{status_text}' تغییر کرد.", build_admin_panel())
+
+# ========== مدیریت ثبت سفارش (با چک وضعیت) ==========
 def start_new_order(chat_id):
+    if ORDER_STATUS == "closed":
+        send_message(chat_id, 
+            "⛔ سفارش‌گذاری در حال حاضر متوقف شده است.\n"
+            "لطفاً بعداً مجدداً تلاش کنید.",
+            build_main_menu()
+        )
+        return
+    
     user_data[chat_id] = {
         "state": "PRODUCT_SELECTION",
         "items": [],
@@ -221,6 +354,7 @@ def start_new_order(chat_id):
         return
     send_message(chat_id, welcome, build_product_keyboard())
 
+# ========== بقیه توابع (بدون تغییر) ==========
 def handle_product_selection(chat_id, text):
     if text in PRODUCTS:
         user_data[chat_id]["current_product"] = text
@@ -503,6 +637,28 @@ def handle_receipt_tracking(chat_id, text):
 
 # ========== مدیریت ادمین ==========
 def handle_admin_command(chat_id, command):
+    # مدیریت محصولات
+    if command == "🛠 مدیریت محصولات":
+        handle_admin_products(chat_id, command)
+        return
+    
+    if command == "➕ افزودن محصول جدید":
+        handle_admin_products(chat_id, command)
+        return
+    
+    if command == "📋 لیست محصولات":
+        handle_admin_products(chat_id, command)
+        return
+    
+    if command == "❌ حذف محصول":
+        handle_admin_products(chat_id, command)
+        return
+    
+    if command == "🔓 وضعیت سفارش‌گذاری":
+        handle_admin_order_status(chat_id)
+        return
+    
+    # بقیه دستورات قبلی
     if command == "📋 سفارش‌های باز (ثبت اولیه)":
         open_orders = [t for t, o in orders.items() if o['status'] == 'registered']
         if not open_orders:
@@ -513,7 +669,6 @@ def handle_admin_command(chat_id, command):
         for tracking in open_orders:
             order = orders[tracking]
             total = order.get('total_price', 0)
-            # اصلاح: استفاده از items[0]['product']
             product_name = order['items'][0]['product'] if order['items'] else "نامشخص"
             msg += f"🆔 {tracking} | {order['name']} | {product_name} | قیمت تقریبی: {total:,} تومان\n"
         
@@ -719,7 +874,7 @@ def show_order_summary(chat_id, tracking):
 # ========== حلقه اصلی ==========
 def bot_loop():
     print("بات روشن شد... در حال گوش دادن به پیام‌ها 🚀")
-    init_storage()
+    load_orders()
     last_update_id = 0
 
     while True:
@@ -745,14 +900,35 @@ def bot_loop():
 
                         # ===== دستورات ادمین =====
                         if chat_id_str == ADMIN_ID:
-                            if text in ["📋 سفارش‌های باز (ثبت اولیه)", "💰 سفارش‌های پرداخت نشده", "✅ رسیدهای تایید شده", "❌ رسیدهای رد شده", "⏳ رسیدهای در انتظار تایید", "📋 لیست همه سفارش‌ها"]:
+                            admin_commands = ["📋 سفارش‌های باز (ثبت اولیه)", "💰 سفارش‌های پرداخت نشده", 
+                                            "✅ رسیدهای تایید شده", "❌ رسیدهای رد شده", 
+                                            "⏳ رسیدهای در انتظار تایید", "📋 لیست همه سفارش‌ها",
+                                            "🛠 مدیریت محصولات", "➕ افزودن محصول جدید", 
+                                            "📋 لیست محصولات", "❌ حذف محصول", "🔓 وضعیت سفارش‌گذاری"]
+                            if text in admin_commands:
                                 handle_admin_command(chat_id, text)
                                 continue
+                            
                             if user_data.get(chat_id, {}).get("state") in ["ADMIN_SET_PRICE_GET_TRACKING", "ADMIN_SET_PRICE_ENTER"]:
                                 handle_admin_set_price(chat_id, text)
                                 continue
                             if user_data.get(chat_id, {}).get("state") in ["ADMIN_PENDING_RECEIPT_GET_TRACKING", "ADMIN_PENDING_RECEIPT_ACTION"]:
                                 handle_admin_pending_receipt(chat_id, text)
+                                continue
+                            if user_data.get(chat_id, {}).get("state") == "ADMIN_PRODUCTS_MENU":
+                                handle_admin_products(chat_id, text)
+                                continue
+                            if user_data.get(chat_id, {}).get("state") == "ADMIN_ADD_PRODUCT_NAME":
+                                handle_add_product_name(chat_id, text)
+                                continue
+                            if user_data.get(chat_id, {}).get("state") == "ADMIN_ADD_PRODUCT_MIN":
+                                handle_add_product_min(chat_id, text)
+                                continue
+                            if user_data.get(chat_id, {}).get("state") == "ADMIN_ADD_PRODUCT_MAX":
+                                handle_add_product_max(chat_id, text)
+                                continue
+                            if user_data.get(chat_id, {}).get("state") == "ADMIN_DELETE_PRODUCT":
+                                handle_delete_product(chat_id, text)
                                 continue
 
                         # ===== دریافت تصویر رسید =====
@@ -762,7 +938,6 @@ def bot_loop():
                             data = user_data[chat_id]
                             tracking = data.get("tracking")
                             if tracking and tracking in orders:
-                                # تغییر وضعیت به pending_payment (اگر تایید نشده باشد)
                                 if orders[tracking]['status'] != 'payment_verified':
                                     orders[tracking]['status'] = 'pending_payment'
                                     save_orders()
