@@ -11,6 +11,19 @@ from threading import Thread
 SETTINGS_FILE = "settings.json"
 ORDERS_FILE = "orders.json"
 
+# تاریخ تولید (می‌توانید تغییر دهید)
+NEXT_PRODUCTION_DATE = "۱۵ تیر ۱۴۰۴"
+
+# لیست مقادیر وزن (ثابت)
+QUANTITIES = {
+    "نیم کیلو": 0.5,
+    "یک کیلو": 1.0,
+    "یک کیلو و نیم": 1.5,
+    "دو کیلو": 2.0,
+    "دو کیلو و نیم": 2.5,
+    "سه کیلو": 3.0
+}
+
 def load_settings():
     """بارگذاری تنظیمات از فایل"""
     try:
@@ -18,7 +31,6 @@ def load_settings():
             with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
         else:
-            # تنظیمات پیش‌فرض
             default_settings = {
                 "products": {
                     "سوسیس آلمانی": {"min": 1500000, "max": 1700000},
@@ -26,7 +38,7 @@ def load_settings():
                     "ناگت مرغ": {"min": 1500000, "max": 1700000},
                     "ناگت بوقلمون": {"min": 1500000, "max": 1700000}
                 },
-                "order_status": "open"  # یا "closed"
+                "order_status": "open"
             }
             save_settings(default_settings)
             return default_settings
@@ -35,7 +47,6 @@ def load_settings():
         return {"products": {}, "order_status": "open"}
 
 def save_settings(settings):
-    """ذخیره تنظیمات در فایل"""
     try:
         with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
             json.dump(settings, f, ensure_ascii=False, indent=2)
@@ -151,11 +162,9 @@ def get_order_status_text(status):
     return status_map.get(status, "نامشخص")
 
 def refresh_products():
-    """بارگذاری مجدد محصولات از تنظیمات"""
-    global PRODUCTS, QUANTITIES
+    global PRODUCTS
     settings = load_settings()
     PRODUCTS = settings.get("products", {})
-    # به‌روزرسانی QUANTITIES ثابت است
 
 # ========== کیبوردها ==========
 def build_main_menu():
@@ -284,7 +293,6 @@ def handle_add_product_max(chat_id, text):
         if max_price <= min_price:
             send_message(chat_id, "❌ حداکثر قیمت باید از حداقل قیمت بیشتر باشد. دوباره وارد کنید:")
             return
-        # ذخیره محصول جدید
         settings = load_settings()
         settings["products"][name] = {"min": min_price, "max": max_price}
         save_settings(settings)
@@ -322,7 +330,7 @@ def handle_admin_order_status(chat_id):
     status_text = "باز ✅" if new_status == "open" else "بسته ❌"
     send_message(chat_id, f"🔓 وضعیت سفارش‌گذاری به '{status_text}' تغییر کرد.", build_admin_panel())
 
-# ========== مدیریت ثبت سفارش (با چک وضعیت) ==========
+# ========== مدیریت ثبت سفارش ==========
 def start_new_order(chat_id):
     if ORDER_STATUS == "closed":
         send_message(chat_id, 
@@ -354,7 +362,6 @@ def start_new_order(chat_id):
         return
     send_message(chat_id, welcome, build_product_keyboard())
 
-# ========== بقیه توابع (بدون تغییر) ==========
 def handle_product_selection(chat_id, text):
     if text in PRODUCTS:
         user_data[chat_id]["current_product"] = text
@@ -658,7 +665,7 @@ def handle_admin_command(chat_id, command):
         handle_admin_order_status(chat_id)
         return
     
-    # بقیه دستورات قبلی
+    # بقیه دستورات
     if command == "📋 سفارش‌های باز (ثبت اولیه)":
         open_orders = [t for t, o in orders.items() if o['status'] == 'registered']
         if not open_orders:
