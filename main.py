@@ -52,7 +52,7 @@ def bot_loop():
     while True:
         try:
             updates = get_updates(last_update_id + 1)
-             print(f"updates result: {updates}")
+            print(f"updates result: {updates}")
             print(f"updates received: {updates}")
             if "result" in updates:
                 for update in updates["result"]:
