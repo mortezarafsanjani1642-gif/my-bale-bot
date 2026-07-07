@@ -108,10 +108,11 @@ def send_photo(chat_id, photo_file_id, caption=None, keyboard=None):
     except Exception as e:
         print(f"❌ خطا در اتصال: {e}")
 
-def get_updates(start_id=None):
+# ========== استفاده از offset به جای start_id ==========
+def get_updates(offset=None):
     payload = {}
-    if start_id:
-        payload["start_id"] = start_id
+    if offset:
+        payload["offset"] = offset
     payload["timeout"] = 10
     try:
         r = requests.post(f"{API_URL}/getUpdates", json=payload, timeout=15)
@@ -800,43 +801,42 @@ def main():
     print(f"👤 ADMIN_ID: {ADMIN_ID}")
     print("⏳ در حال دریافت پیام‌ها...")
     
-    start_id = None
-    processed_messages = set()  # جلوگیری از پردازش تکراری
+    offset = None
+    processed_messages = set()
     
     while True:
         try:
-            updates = get_updates(start_id)
+            updates = get_updates(offset)
             if updates.get("status") == "OK":
                 data = updates.get("data", {})
-                
-                # به‌روزرسانی start_id با next_offset_id
-                if "next_offset_id" in data:
-                    start_id = data["next_offset_id"]
-                
                 updates_list = data.get("updates", [])
+                
                 if updates_list:
                     print(f"📥 {len(updates_list)} آپدیت جدید دریافت شد.")
-                
-                for upd in updates_list:
-                    if upd.get("type") == "NewMessage":
-                        chat_id = upd.get("chat_id")
-                        msg_data = upd.get("new_message", {})
-                        sender_id = msg_data.get("sender_id")
-                        text = msg_data.get("text", "")
-                        message_id = msg_data.get("message_id")
-                        
-                        if not chat_id or not sender_id:
-                            continue
-                        
-                        # جلوگیری از پردازش تکراری
-                        if message_id and message_id in processed_messages:
-                            continue
-                        if message_id:
-                            processed_messages.add(message_id)
-                        
-                        print(f"📩 پیام از {sender_id}: {text}")
-                        process_update(chat_id, sender_id, text)
-                        
+                    
+                    # به‌روزرسانی offset با آخرین update_time
+                    last_update_time = max([u.get("update_time", 0) for u in updates_list])
+                    offset = last_update_time + 1  # ✅ کلیدی‌ترین بخش
+                    
+                    for upd in updates_list:
+                        if upd.get("type") == "NewMessage":
+                            chat_id = upd.get("chat_id")
+                            msg_data = upd.get("new_message", {})
+                            sender_id = msg_data.get("sender_id")
+                            text = msg_data.get("text", "")
+                            message_id = msg_data.get("message_id")
+                            
+                            if not chat_id or not sender_id:
+                                continue
+                            
+                            if message_id and message_id in processed_messages:
+                                continue
+                            if message_id:
+                                processed_messages.add(message_id)
+                            
+                            print(f"📩 پیام از {sender_id}: {text}")
+                            process_update(chat_id, sender_id, text)
+                            
             time.sleep(1)
         except KeyboardInterrupt:
             print("\n🛑 ربات متوقف شد.")
