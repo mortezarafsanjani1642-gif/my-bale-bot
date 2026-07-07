@@ -31,24 +31,28 @@ def main():
         updates = data.get("updates", [])
         
         if updates:
-            # آخرین آپدیت را بگیر
-            last_update = updates[-1]
-            print(f"📄 آخرین آپدیت: {json.dumps(last_update, indent=2, ensure_ascii=False)}")
+            # پیدا کردن آخرین NewMessage
+            last_new_message = None
+            for upd in reversed(updates):  # از آخر به اول
+                if upd.get("type") == "NewMessage":
+                    last_new_message = upd
+                    break
             
-            if last_update.get("type") == "NewMessage":
-                chat_id = last_update.get("chat_id")
-                msg = last_update.get("new_message", {})
+            if last_new_message:
+                chat_id = last_new_message.get("chat_id")
+                msg = last_new_message.get("new_message", {})
                 text = msg.get("text", "")
                 sender = msg.get("sender_id")
                 
-                print(f"📩 chat_id: {chat_id}")
-                print(f"📩 sender: {sender}")
-                print(f"📩 text: {text}")
+                print(f"📩 آخرین NewMessage:")
+                print(f"  chat_id: {chat_id}")
+                print(f"  sender: {sender}")
+                print(f"  text: {text}")
                 
-                # ارسال پیام تست به همین chat_id
+                # ارسال پیام تست
                 send_message(chat_id, "سلام! این یک پیام تست از پایتون است.")
             else:
-                print(f"⚠️ آخرین آپدیت از نوع {last_update.get('type')} است، نه NewMessage.")
+                print("⚠️ هیچ NewMessage در آپدیت‌ها یافت نشد.")
         else:
             print("⚠️ هیچ آپدیتی یافت نشد.")
     else:
