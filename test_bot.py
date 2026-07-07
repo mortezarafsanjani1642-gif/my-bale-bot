@@ -18,11 +18,11 @@ async def handle_start(bot: BotClient, update: Update):
         "resize_keyboard": True
     }
     
-    # ✅ استفاده از bot.send_message به جای update.reply
+    # ✅ استفاده از keypad به جای reply_markup
     await bot.send_message(
         chat_id=update.chat_id,
         text="سلام! به ربات خوش آمدید.\nلطفاً از منو استفاده کنید:",
-        reply_markup=keyboard
+        keypad=keyboard
     )
 
 @bot.on_update(filters.text)
