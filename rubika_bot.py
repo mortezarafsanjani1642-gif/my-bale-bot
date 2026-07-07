@@ -9,10 +9,8 @@ import json
 # ================ تنظیمات اولیه ==================
 # ==================================================
 
-# 🔻🔻🔻 این دو خط را با اطلاعات واقعی خود پر کنید 🔻🔻🔻
-TOKEN = "BIJFAB0MVHQAPLZSKUQLWKYWBTLDWCEQCCBHOXLCLXUUARAVJTITTEJHIHWYMCOX"
-ADMIN_ID = "u0BFJ3K03f5d8786134f2ab3c1ebfc40"   # شناسه ادمین که قبلاً پیدا کردید
-# 🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺
+TOKEN = "توکن_ربات_خود_را_اینجا_وارد_کنید"
+ADMIN_ID = "u0BFJ3K03f5d8786134f2ab3c1ebfc40"
 
 API_URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
 SETTINGS_FILE = "settings.json"
@@ -110,19 +108,47 @@ def send_photo(chat_id, photo_file_id, caption=None, keyboard=None):
     except Exception as e:
         print(f"❌ خطا در اتصال: {e}")
 
-# ========== اصلاح مهم: استفاده از start_id به جای offset ==========
+# ========== تابع اصلاح شده get_updates ==========
 def get_updates(start_id=None):
     params = {}
     if start_id:
-        params["start_id"] = start_id   # ✅ درست برای روبیکا
-    params["timeout"] = 20
+        params["start_id"] = start_id
+    params["timeout"] = 10  # کاهش timeout
+    
     try:
-        r = requests.get(f"{API_URL}/getUpdates", params=params, timeout=30)
-        if r.status_code == 200:
-            return r.json()
-        else:
-            print(f"❌ خطا در getUpdates: {r.status_code} - {r.text}")
+        r = requests.get(f"{API_URL}/getUpdates", params=params, timeout=15)
+        if r.status_code != 200:
+            print(f"❌ HTTP خطا: {r.status_code}")
             return {}
+        
+        content = r.text.strip()
+        if not content:
+            print("⚠️ پاسخ خالی از سرور")
+            return {}
+        
+        # اگر پاسخ با '[' شروع شد، اولین شیء را بگیر
+        if content.startswith('['):
+            try:
+                data = json.loads(content)
+                if isinstance(data, list) and len(data) > 0:
+                    return data[0]
+                else:
+                    return {}
+            except:
+                print("⚠️ پاسخ آرایه‌ای اما نامعتبر")
+                return {}
+        
+        # parse به عنوان JSON شیء
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as e:
+            print(f"❌ خطای JSON: {e}")
+            print(f"📄 محتوای پاسخ: {content[:200]}...")
+            return {}
+            
+    except requests.exceptions.Timeout:
+        print("⏰ زمان‌بندی درخواست منقضی شد")
+        return {}
     except Exception as e:
         print(f"❌ خطا در دریافت آپدیت: {e}")
         return {}
@@ -801,20 +827,18 @@ def main():
     print(f"👤 ADMIN_ID: {ADMIN_ID}")
     print("⏳ در حال دریافت پیام‌ها...")
     
-    start_id = None   # ✅ اصلاح شده: offset → start_id
+    start_id = None
     while True:
         try:
             updates = get_updates(start_id)
             if updates.get("status") == "OK":
                 data = updates.get("data", {})
-                
-                # ====== عیب‌یابی: نمایش تعداد آپدیت‌های دریافت شده ======
                 update_count = len(data.get("updates", []))
                 if update_count > 0:
                     print(f"📥 {update_count} آپدیت جدید دریافت شد.")
                 
                 if "next_offset_id" in data:
-                    start_id = data["next_offset_id"]   # ✅ اصلاح شده
+                    start_id = data["next_offset_id"]
                 
                 updates_list = data.get("updates", [])
                 for upd in updates_list:
@@ -827,9 +851,7 @@ def main():
                         if not chat_id or not sender_id:
                             continue
                         
-                        # ====== عیب‌یابی: نمایش محتوای پیام دریافتی ======
                         print(f"📩 پیام از {sender_id}: {text}")
-                        
                         process_update(chat_id, sender_id, text)
                         
             time.sleep(1)
