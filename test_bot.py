@@ -20,7 +20,7 @@ def send_message(chat_id, text, keyboard=None):
 
 def get_updates():
     try:
-        r = requests.post(f"{API_URL}/getUpdates", json={"timeout": 10}, timeout=15)
+        r = requests.post(f"{API_URL}/getUpdates", json={"timeout": 5}, timeout=10)
         if r.status_code == 200:
             return r.json()
         return {}
@@ -40,8 +40,9 @@ def main_menu():
     }
 
 def main():
-    print("🚀 ربات با ساختار تست‌شده شروع شد...")
-    last_update_time = 0  # فقط پیام‌های جدیدتر از این زمان را پردازش کن
+    print("🚀 ربات با مدیریت update_time شروع شد...")
+    last_update_time = 0  # فقط آپدیت‌های جدیدتر از این زمان را پردازش کن
+    processed_messages = set()  # برای جلوگیری از تکرار
 
     while True:
         try:
@@ -51,28 +52,39 @@ def main():
                 updates = data.get("updates", [])
 
                 if updates:
-                    # فقط آخرین آپدیت را بگیر
-                    last_update = updates[-1]
-                    update_time = last_update.get("update_time", 0)
+                    # پیدا کردن جدیدترین update_time
+                    max_time = max([u.get("update_time", 0) for u in updates])
                     
-                    # اگر این آپدیت جدیدتر از آخرین پردازش شده است
-                    if update_time > last_update_time:
-                        last_update_time = update_time
+                    # فقط آپدیت‌هایی که جدیدتر از last_update_time هستند
+                    new_updates = [u for u in updates if u.get("update_time", 0) > last_update_time]
+                    
+                    if new_updates:
+                        print(f"📥 {len(new_updates)} آپدیت جدید دریافت شد.")
+                        last_update_time = max_time
                         
-                        if last_update.get("type") == "NewMessage":
-                            chat_id = last_update.get("chat_id")
-                            msg = last_update.get("new_message", {})
-                            text = msg.get("text", "")
-                            sender = msg.get("sender_id")
-                            
-                            print(f"📩 پیام جدید از {sender}: {text}")
-                            
-                            if text == "/start":
-                                send_message(chat_id, "سلام! به ربات خوش آمدید.\nلطفاً از منو استفاده کنید:", main_menu())
-                            else:
-                                send_message(chat_id, f"شما گفتید: {text}", main_menu())
-                    else:
-                        print("⏳ پیام تکراری، نادیده گرفته شد.")
+                        for upd in new_updates:
+                            if upd.get("type") == "NewMessage":
+                                chat_id = upd.get("chat_id")
+                                msg = upd.get("new_message", {})
+                                msg_id = msg.get("message_id")
+                                text = msg.get("text", "")
+                                sender = msg.get("sender_id")
+                                
+                                if not chat_id or not sender:
+                                    continue
+                                
+                                # جلوگیری از پردازش تکراری
+                                if msg_id and msg_id in processed_messages:
+                                    continue
+                                if msg_id:
+                                    processed_messages.add(msg_id)
+                                
+                                print(f"📩 پیام از {sender}: {text}")
+                                
+                                if text == "/start":
+                                    send_message(chat_id, "سلام! به ربات خوش آمدید.\nلطفاً از منو استفاده کنید:", main_menu())
+                                else:
+                                    send_message(chat_id, f"شما گفتید: {text}", main_menu())
 
             time.sleep(1)
 
