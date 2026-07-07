@@ -13,23 +13,20 @@ def send_message(chat_id, text, keyboard=None):
         r = requests.post(f"{API_URL}/sendMessage", json=payload, timeout=10)
         if r.status_code != 200:
             print(f"❌ خطا در ارسال: {r.text}")
+        else:
+            print("✅ پیام ارسال شد.")
     except Exception as e:
         print(f"❌ خطا: {e}")
 
-def get_updates(start_id=None):
-    payload = {}
-    if start_id:
-        payload["start_id"] = start_id
-    payload["timeout"] = 10
+def get_updates():
+    # بدون هیچ پارامتری، همه آپدیت‌ها را بگیر
     try:
-        r = requests.post(f"{API_URL}/getUpdates", json=payload, timeout=15)
+        r = requests.post(f"{API_URL}/getUpdates", json={"timeout": 10}, timeout=15)
         if r.status_code == 200:
             return r.json()
-        else:
-            print(f"❌ HTTP Error: {r.status_code}")
-            return {}
+        return {}
     except Exception as e:
-        print(f"❌ خطا در getUpdates: {e}")
+        print(f"❌ خطا: {e}")
         return {}
 
 def main_menu():
@@ -43,54 +40,42 @@ def main_menu():
         "resize_keyboard": True
     }
 
-def process_message(chat_id, text):
-    if text == "/start":
-        send_message(chat_id, "سلام! به ربات خوش آمدید.\nلطفاً از منو استفاده کنید:", main_menu())
-    else:
-        send_message(chat_id, f"شما گفتید: {text}", main_menu())
-
 def main():
-    print("🚀 ربات با start_id و update_time شروع شد...")
-    start_id = None
-    processed = set()
+    print("🚀 ربات با روش آخرین پیام شروع شد...")
+    last_message_id = None  # فقط آخرین پیام را پردازش کن
 
     while True:
         try:
-            response = get_updates(start_id)
+            response = get_updates()
             if response.get("status") == "OK":
                 data = response.get("data", {})
                 updates = data.get("updates", [])
 
                 if updates:
-                    # محاسبه start_id جدید از آخرین update_time
-                    last_update_time = max([u.get("update_time", 0) for u in updates])
-                    start_id = last_update_time + 1  # ✅ کلید اصلی: استفاده از update_time
+                    # فقط آخرین آپدیت را بگیر
+                    last_update = updates[-1]
+                    
+                    if last_update.get("type") == "NewMessage":
+                        chat_id = last_update.get("chat_id")
+                        msg = last_update.get("new_message", {})
+                        msg_id = msg.get("message_id")
+                        text = msg.get("text", "")
+                        sender = msg.get("sender_id")
 
-                    print(f"📥 {len(updates)} آپدیت جدید. start_id جدید: {start_id}")
-
-                    for upd in updates:
-                        if upd.get("type") == "NewMessage":
-                            chat_id = upd.get("chat_id")
-                            msg = upd.get("new_message", {})
-                            sender = msg.get("sender_id")
-                            text = msg.get("text", "")
-                            msg_id = msg.get("message_id")
-
-                            if not chat_id or not sender:
-                                continue
-
-                            if msg_id and msg_id in processed:
-                                continue
-                            if msg_id:
-                                processed.add(msg_id)
-
-                            print(f"📩 پیام از {sender}: {text}")
-                            process_message(chat_id, text)
-                else:
-                    # هیچ آپدیت جدیدی نیست
-                    pass
+                        # اگر این پیام قبلاً پردازش نشده
+                        if msg_id != last_message_id:
+                            last_message_id = msg_id
+                            print(f"📩 پیام جدید از {sender}: {text}")
+                            
+                            if text == "/start":
+                                send_message(chat_id, "سلام! به ربات خوش آمدید.\nلطفاً از منو استفاده کنید:", main_menu())
+                            else:
+                                send_message(chat_id, f"شما گفتید: {text}", main_menu())
+                        else:
+                            print("⏳ پیام تکراری، نادیده گرفته شد.")
 
             time.sleep(1)
+
         except KeyboardInterrupt:
             print("\n🛑 توقف.")
             break
