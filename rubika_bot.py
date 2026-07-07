@@ -9,7 +9,7 @@ import json
 # ================ تنظیمات اولیه ==================
 # ==================================================
 
-TOKEN = "توکن_ربات_خود_را_اینجا_وارد_کنید"
+TOKEN = "BIJFAB0MVHQAPLZSKUQLWKYWBTLDWCEQCCBHOXLCLXUUARAVJTITTEJHIHWYMCOX"
 ADMIN_ID = "u0BFJ3K03f5d8786134f2ab3c1ebfc40"
 
 API_URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
