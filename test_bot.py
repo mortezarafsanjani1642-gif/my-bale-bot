@@ -1,37 +1,70 @@
-import asyncio
-from rubpy import Client, filters
-from rubpy.types import Update
+from rubpy import BotClient
+from rubpy.bot import filters
+from rubpy.bot.models import Update, Keypad, KeypadRow, Button, ButtonTypeEnum
 
 TOKEN = "BIJFAB0MVHQAPLZSKUQLWKYWBTLDWCEQCCBHOXLCLXUUARAVJTITTEJHIHWYMCOX"
 
-client = Client(token=TOKEN)
+# ====== راه‌اندازی ربات ======
+bot = BotClient(token=TOKEN)
 
-@client.on_message(filters.text)
-async def handle_message(update: Update):
-    chat_id = update.chat_id
-    text = update.text
+# ====== دستور /start ======
+@bot.on_update(filters.commands("start"))
+async def handle_start(bot: BotClient, update: Update):
+    # ساخت کیبورد با ۴ دکمه
+    keypad = Keypad(
+        rows=[
+            KeypadRow(
+                buttons=[
+                    Button(
+                        id="1",
+                        type=ButtonTypeEnum.TEXT,
+                        button_text="🛍️ ثبت سفارش جدید"
+                    )
+                ]
+            ),
+            KeypadRow(
+                buttons=[
+                    Button(
+                        id="2",
+                        type=ButtonTypeEnum.TEXT,
+                        button_text="💰 ارسال رسید پرداخت"
+                    )
+                ]
+            ),
+            KeypadRow(
+                buttons=[
+                    Button(
+                        id="3",
+                        type=ButtonTypeEnum.TEXT,
+                        button_text="✏️ تغییر سفارش"
+                    )
+                ]
+            ),
+            KeypadRow(
+                buttons=[
+                    Button(
+                        id="4",
+                        type=ButtonTypeEnum.TEXT,
+                        button_text="🔍 پیگیری سفارش"
+                    )
+                ]
+            )
+        ],
+        resize_keyboard=True,
+        on_time_keyboard=False
+    )
     
-    if text == "/start":
-        # کیبورد با چهار دکمه
-        keyboard = {
-            "keyboard": [
-                [{"text": "🛍️ ثبت سفارش جدید"}],
-                [{"text": "💰 ارسال رسید پرداخت"}],
-                [{"text": "✏️ تغییر سفارش"}],
-                [{"text": "🔍 پیگیری سفارش"}]
-            ],
-            "resize_keyboard": True
-        }
-        await client.send_message(
-            chat_id=chat_id,
-            text="سلام! به ربات خوش آمدید.\nلطفاً از منو استفاده کنید:",
-            reply_markup=keyboard
-        )
-    else:
-        await client.send_message(
-            chat_id=chat_id,
-            text=f"شما گفتید: {text}"
-        )
+    await update.reply(
+        "سلام! به ربات خوش آمدید.\nلطفاً از منو استفاده کنید:",
+        inline_keypad=keypad
+    )
 
+# ====== دریافت پیام‌های معمولی ======
+@bot.on_update(filters.text)
+async def handle_text(bot: BotClient, update: Update):
+    text = update.new_message.text
+    await update.reply(f"شما گفتید: {text}")
+
+# ====== اجرا ======
 if __name__ == "__main__":
-    client.run()
+    bot.run()
