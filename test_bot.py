@@ -11,10 +11,9 @@ def send_message(chat_id, text, keyboard=None):
         payload["reply_markup"] = keyboard
     try:
         r = requests.post(f"{API_URL}/sendMessage", json=payload, timeout=10)
+        print(f"📤 پاسخ: {r.status_code} - {r.text}")
         if r.status_code != 200:
             print(f"❌ خطا در ارسال: {r.text}")
-        else:
-            print("✅ پیام ارسال شد.")
     except Exception as e:
         print(f"❌ خطا: {e}")
 
@@ -28,19 +27,8 @@ def get_updates():
         print(f"❌ خطا: {e}")
         return {}
 
-def main_menu():
-    # ✅ استفاده از Inline Keyboard (کیبورد شیشه‌ای)
-    return {
-        "inline_keyboard": [
-            [{"text": "🛍️ ثبت سفارش جدید", "callback_data": "new_order"}],
-            [{"text": "💰 ارسال رسید پرداخت", "callback_data": "receipt"}],
-            [{"text": "✏️ تغییر سفارش", "callback_data": "edit"}],
-            [{"text": "🔍 پیگیری سفارش", "callback_data": "track"}]
-        ]
-    }
-
 def main():
-    print("🚀 ربات با Inline Keyboard شروع شد...")
+    print("🚀 تست کیبورد ساده شروع شد...")
     last_message_id = None
 
     while True:
@@ -51,7 +39,6 @@ def main():
                 updates = data.get("updates", [])
 
                 if updates:
-                    # پیدا کردن آخرین NewMessage
                     last_new = None
                     for upd in reversed(updates):
                         if upd.get("type") == "NewMessage":
@@ -69,9 +56,15 @@ def main():
                             print(f"📩 پیام جدید: {text}")
                             
                             if text == "/start":
-                                send_message(chat_id, "سلام! به ربات خوش آمدید.\nلطفاً از منو استفاده کنید:", main_menu())
+                                # ✅ ساده‌ترین کیبورد ممکن: فقط یک دکمه
+                                keyboard = {
+                                    "keyboard": [
+                                        [{"text": "🛍️ ثبت سفارش"}]
+                                    ]
+                                }
+                                send_message(chat_id, "سلام! روی دکمه کلیک کن:", keyboard)
                             else:
-                                send_message(chat_id, f"شما گفتید: {text}", main_menu())
+                                send_message(chat_id, f"شما گفتید: {text}")
 
             time.sleep(1)
 
