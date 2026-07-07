@@ -10,7 +10,7 @@ import json
 # ==================================================
 
 # 🔻🔻🔻 این دو خط را با اطلاعات واقعی خود پر کنید 🔻🔻🔻
-TOKEN = "توکن_ربات_خود_را_اینجا_وارد_کنید"        # از @BotFather روبیکا بگیرید
+TOKEN = "BIJFAB0MVHQAPLZSKUQLWKYWBTLDWCEQCCBHOXLCLXUUARAVJTITTEJHIHWYMCOX"
 ADMIN_ID = "u0BFJ3K03f5d8786134f2ab3c1ebfc40"   # شناسه ادمین که قبلاً پیدا کردید
 # 🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺
 
