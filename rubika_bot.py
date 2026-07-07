@@ -108,11 +108,11 @@ def send_photo(chat_id, photo_file_id, caption=None, keyboard=None):
     except Exception as e:
         print(f"❌ خطا در اتصال: {e}")
 
-# ========== استفاده از offset به جای start_id ==========
-def get_updates(offset=None):
+# ========== استفاده از start_id به جای offset ==========
+def get_updates(start_id=None):
     payload = {}
-    if offset:
-        payload["offset"] = offset
+    if start_id:
+        payload["start_id"] = start_id
     payload["timeout"] = 10
     try:
         r = requests.post(f"{API_URL}/getUpdates", json=payload, timeout=15)
@@ -801,12 +801,12 @@ def main():
     print(f"👤 ADMIN_ID: {ADMIN_ID}")
     print("⏳ در حال دریافت پیام‌ها...")
     
-    offset = None
+    start_id = None
     processed_messages = set()
     
     while True:
         try:
-            updates = get_updates(offset)
+            updates = get_updates(start_id)
             if updates.get("status") == "OK":
                 data = updates.get("data", {})
                 updates_list = data.get("updates", [])
@@ -814,9 +814,9 @@ def main():
                 if updates_list:
                     print(f"📥 {len(updates_list)} آپدیت جدید دریافت شد.")
                     
-                    # به‌روزرسانی offset با آخرین update_time
+                    # ✅ به‌روزرسانی start_id با آخرین update_time + 1
                     last_update_time = max([u.get("update_time", 0) for u in updates_list])
-                    offset = last_update_time + 1  # ✅ کلیدی‌ترین بخش
+                    start_id = last_update_time + 1
                     
                     for upd in updates_list:
                         if upd.get("type") == "NewMessage":
