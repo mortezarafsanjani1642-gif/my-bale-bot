@@ -6,11 +6,11 @@ import string
 import json
 
 # ==================================================
-# ================ تنظیمات اولیه =================
+# ================ تنظیمات اولیه ==================
 # ==================================================
 
 # 🔻🔻🔻 این دو خط را با اطلاعات واقعی خود پر کنید 🔻🔻🔻
-TOKEN = "BIJFAB0MVHQAPLZSKUQLWKYWBTLDWCEQCCBHOXLCLXUUARAVJTITTEJHIHWYMCOX"
+TOKEN = "توکن_ربات_خود_را_اینجا_وارد_کنید"        # از @BotFather روبیکا بگیرید
 ADMIN_ID = "u0BFJ3K03f5d8786134f2ab3c1ebfc40"   # شناسه ادمین که قبلاً پیدا کردید
 # 🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺
 
@@ -110,16 +110,18 @@ def send_photo(chat_id, photo_file_id, caption=None, keyboard=None):
     except Exception as e:
         print(f"❌ خطا در اتصال: {e}")
 
-def get_updates(offset=None):
+# ========== اصلاح مهم: استفاده از start_id به جای offset ==========
+def get_updates(start_id=None):
     params = {}
-    if offset:
-        params["offset"] = offset
+    if start_id:
+        params["start_id"] = start_id   # ✅ درست برای روبیکا
     params["timeout"] = 20
     try:
         r = requests.get(f"{API_URL}/getUpdates", params=params, timeout=30)
         if r.status_code == 200:
             return r.json()
         else:
+            print(f"❌ خطا در getUpdates: {r.status_code} - {r.text}")
             return {}
     except Exception as e:
         print(f"❌ خطا در دریافت آپدیت: {e}")
@@ -492,7 +494,6 @@ def handle_ask_more_products(chat_id, text):
         user_data[chat_id]["state"] = "PRODUCT_SELECTION"
         send_message(chat_id, "محصول بعدی را انتخاب کنید:", build_product_keyboard())
     elif text == "❌ نه، ادامه ثبت سفارش":
-        # نمایش خلاصه سفارش
         items = user_data[chat_id]["items"]
         total = user_data[chat_id]["total_price"]
         summary = "📋 خلاصه سفارش:\n\n"
@@ -505,7 +506,7 @@ def handle_ask_more_products(chat_id, text):
         send_message(chat_id, "به منوی اصلی بازگشتید.", build_main_menu())
         user_data.pop(chat_id, None)
     else:
-        handle_quantity_selection(chat_id, text)  # fallback
+        handle_quantity_selection(chat_id, text)
 
 def handle_confirm_order(chat_id, text):
     if text == "✅ ثبت سفارش":
@@ -524,7 +525,6 @@ def handle_confirm_order(chat_id, text):
         save_orders()
         send_message(chat_id, f"✅ سفارش شما با کد پیگیری {tracking} ثبت شد.\n\nجهت تکمیل سفارش، رسید پرداخت را ارسال کنید.", build_main_menu())
         user_data.pop(chat_id, None)
-        # اطلاع به ادمین
         send_message(ADMIN_ID, f"📢 سفارش جدید!\nکد: {tracking}\nکاربر: {chat_id}\nمبلغ: {order_data['total_price']:,} تومان")
     elif text == "🔙 بازگشت":
         send_message(chat_id, "ثبت سفارش لغو شد.", build_main_menu())
@@ -534,8 +534,6 @@ def handle_confirm_order(chat_id, text):
 
 # ---------- ارسال رسید پرداخت ----------
 def handle_receipt(chat_id, text):
-    # در این نسخه ساده، کاربر کد پیگیری و توضیحات را می‌فرستد
-    # اما در نسخه پیشرفته می‌توان عکس را دریافت کرد.
     if text == "💰 ارسال رسید پرداخت":
         send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش خود را وارد کنید:", build_back_keyboard())
         user_data[chat_id] = {"state": "RECEIPT_GET_TRACKING"}
@@ -554,13 +552,11 @@ def handle_receipt(chat_id, text):
     elif user_data.get(chat_id, {}).get("state") == "RECEIPT_GET_DESC":
         tracking = user_data[chat_id]["receipt_tracking"]
         desc = text
-        # به‌روزرسانی وضعیت سفارش
         if tracking in orders:
             orders[tracking]['status'] = 'pending_payment'
             orders[tracking]['receipt_desc'] = desc
             save_orders()
             send_message(chat_id, f"✅ رسید شما برای سفارش {tracking} ارسال شد.\nمنتظر تایید ادمین باشید.", build_main_menu())
-            # اطلاع به ادمین
             send_message(ADMIN_ID, f"💰 رسید جدید برای سفارش {tracking}:\n{desc}\n\nبرای تایید/رد از پنل مدیریت استفاده کنید.", build_admin_panel())
             user_data.pop(chat_id, None)
         else:
@@ -599,7 +595,6 @@ def handle_edit_order(chat_id, text):
             return
         tracking = normalize_persian_numbers(text.strip())
         if tracking in orders:
-            # فقط در صورتی که وضعیت registered یا pending_payment باشد قابل ویرایش است
             if orders[tracking].get('status') in ['registered', 'pending_payment']:
                 send_message(chat_id, f"سفارش {tracking} پیدا شد. چه اقدامی می‌خواهید انجام دهید؟", build_edit_cancel_keyboard(tracking))
                 user_data[chat_id]["edit_tracking"] = tracking
@@ -612,8 +607,6 @@ def handle_edit_order(chat_id, text):
     elif user_data.get(chat_id, {}).get("state") == "EDIT_CHOOSE_ACTION":
         tracking = user_data[chat_id]["edit_tracking"]
         if text == f"✏️ ویرایش سفارش {tracking}":
-            # شروع مجدد فرآیند سفارش با آیتم‌های قبلی
-            # (برای سادگی، کاربر را به منوی اصلی برمی‌گردانیم)
             send_message(chat_id, "برای ویرایش، لطفاً سفارش جدید ثبت کنید و سفارش قبلی را لغو نمایید.", build_main_menu())
             user_data.pop(chat_id, None)
         elif text == f"❌ لغو سفارش {tracking}":
@@ -684,7 +677,7 @@ def handle_admin_commands(chat_id, text):
             send_message(chat_id, "📭 هیچ سفارشی وجود ندارد.", build_admin_panel())
             return
         msg = "📋 همه سفارش‌ها:\n\n"
-        for k, v in list(orders.items())[:10]:  # محدودیت نمایش
+        for k, v in list(orders.items())[:10]:
             msg += f"{k}: {v.get('status')} - {v['total_price']:,} تومان\n"
         send_message(chat_id, msg, build_admin_panel())
     
@@ -701,14 +694,11 @@ def handle_admin_commands(chat_id, text):
 
 # ---------- پردازش پیام ورودی ----------
 def process_update(chat_id, sender_id, text):
-    # اگر پیام شروع با /start باشد
     if text == "/start":
         send_message(chat_id, "سلام! به ربات فروشگاهی خوش آمدید.\nلطفاً از منوی زیر استفاده کنید:", build_main_menu())
         return
 
-    # اگر کاربر ادمین است
     if sender_id == ADMIN_ID:
-        # بررسی وضعیت‌های داخلی ادمین
         state = user_data.get(chat_id, {}).get("state", "")
         if state == "ADMIN_ADD_PRODUCT_NAME":
             handle_add_product_name(chat_id, text)
@@ -741,22 +731,18 @@ def process_update(chat_id, sender_id, text):
             handle_admin_products(chat_id, text)
             return
 
-        # اگر در وضعیت داخلی نبود، فرمان پنل ادمین را بررسی کن
         if text in ["📋 سفارش‌های باز (ثبت اولیه)", "💰 سفارش‌های پرداخت نشده", 
                     "✅ رسیدهای تایید شده", "❌ رسیدهای رد شده", "⏳ رسیدهای در انتظار تایید",
                     "📋 لیست همه سفارش‌ها", "🛠 مدیریت محصولات", "🔓 وضعیت سفارش‌گذاری",
                     "🚫 لغو سفارش", "🗑️ حذف همیشگی سفارش", "📊 داشبورد"]:
             handle_admin_commands(chat_id, text)
             return
-        # تایید/رد رسید از طریق دکمه
         if text.startswith("✅ تایید رسید") or text.startswith("❌ رد رسید"):
             handle_admin_commands(chat_id, text)
             return
 
-    # ---------- منوی کاربر معمولی ----------
     state = user_data.get(chat_id, {}).get("state", "")
     
-    # وضعیت‌های ثبت سفارش
     if state == "PRODUCT_SELECTION":
         if text == "🛍️ ثبت سفارش جدید":
             start_new_order(chat_id)
@@ -783,22 +769,18 @@ def process_update(chat_id, sender_id, text):
         handle_confirm_order(chat_id, text)
         return
     
-    # ارسال رسید
     elif state == "RECEIPT_GET_TRACKING" or state == "RECEIPT_GET_DESC":
         handle_receipt(chat_id, text)
         return
     
-    # پیگیری
     elif state == "TRACK_GET_CODE":
         handle_track_order(chat_id, text)
         return
     
-    # ویرایش
     elif state == "EDIT_GET_CODE" or state == "EDIT_CHOOSE_ACTION":
         handle_edit_order(chat_id, text)
         return
     
-    # منوی اصلی
     if text == "🛍️ ثبت سفارش جدید":
         start_new_order(chat_id)
     elif text == "💰 ارسال رسید پرداخت":
@@ -819,15 +801,20 @@ def main():
     print(f"👤 ADMIN_ID: {ADMIN_ID}")
     print("⏳ در حال دریافت پیام‌ها...")
     
-    offset = None
+    start_id = None   # ✅ اصلاح شده: offset → start_id
     while True:
         try:
-            updates = get_updates(offset)
+            updates = get_updates(start_id)
             if updates.get("status") == "OK":
                 data = updates.get("data", {})
-                # ذخیره next_offset برای دریافت پیام‌های جدید
+                
+                # ====== عیب‌یابی: نمایش تعداد آپدیت‌های دریافت شده ======
+                update_count = len(data.get("updates", []))
+                if update_count > 0:
+                    print(f"📥 {update_count} آپدیت جدید دریافت شد.")
+                
                 if "next_offset_id" in data:
-                    offset = data["next_offset_id"]
+                    start_id = data["next_offset_id"]   # ✅ اصلاح شده
                 
                 updates_list = data.get("updates", [])
                 for upd in updates_list:
@@ -840,7 +827,9 @@ def main():
                         if not chat_id or not sender_id:
                             continue
                         
-                        # پردازش پیام
+                        # ====== عیب‌یابی: نمایش محتوای پیام دریافتی ======
+                        print(f"📩 پیام از {sender_id}: {text}")
+                        
                         process_update(chat_id, sender_id, text)
                         
             time.sleep(1)
