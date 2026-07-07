@@ -5,14 +5,10 @@ import json
 TOKEN = "BIJFAB0MVHQAPLZSKUQLWKYWBTLDWCEQCCBHOXLCLXUUARAVJTITTEJHIHWYMCOX"
 API_URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
 
-def send_message(chat_id, text, chat_keypad=None, chat_keypad_type="New"):
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-    }
-    if chat_keypad:
-        payload["chat_keypad"] = chat_keypad
-        payload["chat_keypad_type"] = chat_keypad_type
+def send_message(chat_id, text, inline_keypad=None):
+    payload = {"chat_id": chat_id, "text": text}
+    if inline_keypad:
+        payload["inline_keypad"] = inline_keypad
     try:
         r = requests.post(f"{API_URL}/sendMessage", json=payload, timeout=10)
         print(f"📤 پاسخ: {r.status_code} - {r.text}")
@@ -21,9 +17,13 @@ def send_message(chat_id, text, chat_keypad=None, chat_keypad_type="New"):
     except Exception as e:
         print(f"❌ خطا: {e}")
 
-def get_updates():
+def get_updates(start_id=None):
+    payload = {}
+    if start_id:
+        payload["start_id"] = start_id
+    payload["timeout"] = 5
     try:
-        r = requests.post(f"{API_URL}/getUpdates", json={"timeout": 5}, timeout=10)
+        r = requests.post(f"{API_URL}/getUpdates", json=payload, timeout=10)
         if r.status_code == 200:
             return r.json()
         return {}
@@ -36,66 +36,93 @@ def main_menu():
         "rows": [
             {
                 "buttons": [
-                    {"id": "1", "type": "Simple", "button_text": "🛍️ ثبت سفارش جدید"}
+                    {"id": "new_order", "type": "Simple", "button_text": "🛍️ ثبت سفارش جدید"}
                 ]
             },
             {
                 "buttons": [
-                    {"id": "2", "type": "Simple", "button_text": "💰 ارسال رسید پرداخت"}
+                    {"id": "receipt", "type": "Simple", "button_text": "💰 ارسال رسید پرداخت"}
                 ]
             },
             {
                 "buttons": [
-                    {"id": "3", "type": "Simple", "button_text": "✏️ تغییر سفارش"}
+                    {"id": "edit", "type": "Simple", "button_text": "✏️ تغییر سفارش"}
                 ]
             },
             {
                 "buttons": [
-                    {"id": "4", "type": "Simple", "button_text": "🔍 پیگیری سفارش"}
+                    {"id": "track", "type": "Simple", "button_text": "🔍 پیگیری سفارش"}
                 ]
             }
-        ],
-        "resize_keyboard": True,
-        "one_time_keyboard": False
+        ]
     }
 
+def process_update(chat_id, text):
+    if text == "/start":
+        send_message(chat_id, "سلام! به ربات خوش آمدید.\nلطفاً از منو استفاده کنید:", main_menu())
+    else:
+        # پاسخ به دکمه‌ها
+        if text == "new_order":
+            send_message(chat_id, "شما ثبت سفارش جدید را انتخاب کردید.")
+        elif text == "receipt":
+            send_message(chat_id, "شما ارسال رسید پرداخت را انتخاب کردید.")
+        elif text == "edit":
+            send_message(chat_id, "شما تغییر سفارش را انتخاب کردید.")
+        elif text == "track":
+            send_message(chat_id, "شما پیگیری سفارش را انتخاب کردید.")
+        else:
+            send_message(chat_id, f"شما گفتید: {text}")
+
 def main():
-    print("🚀 ربات با ساختار صحیح روبیکا شروع شد...")
-    last_message_id = None
+    print("🚀 ربات با inline_keypad شروع شد...")
+    start_id = None
+    processed = set()
 
     while True:
         try:
-            response = get_updates()
+            response = get_updates(start_id)
             if response.get("status") == "OK":
                 data = response.get("data", {})
                 updates = data.get("updates", [])
 
                 if updates:
-                    last_new = None
-                    for upd in reversed(updates):
+                    # به‌روزرسانی start_id با آخرین update_time
+                    last_time = max([u.get("update_time", 0) for u in updates])
+                    start_id = last_time + 1
+                    print(f"🔄 start_id: {start_id}")
+
+                    for upd in updates:
+                        # دریافت پیام‌های متنی
                         if upd.get("type") == "NewMessage":
-                            last_new = upd
-                            break
-                    
-                    if last_new:
-                        chat_id = last_new.get("chat_id")
-                        msg = last_new.get("new_message", {})
-                        msg_id = msg.get("message_id")
-                        text = msg.get("text", "")
-                        
-                        if msg_id != last_message_id:
-                            last_message_id = msg_id
-                            print(f"📩 پیام جدید: {text}")
+                            chat_id = upd.get("chat_id")
+                            msg = upd.get("new_message", {})
+                            msg_id = msg.get("message_id")
+                            text = msg.get("text", "")
                             
-                            if text == "/start":
-                                send_message(
-                                    chat_id, 
-                                    "سلام! به ربات خوش آمدید.\nلطفاً از منو استفاده کنید:",
-                                    main_menu(),
-                                    "New"
-                                )
-                            else:
-                                send_message(chat_id, f"شما گفتید: {text}")
+                            if msg_id and msg_id in processed:
+                                continue
+                            if msg_id:
+                                processed.add(msg_id)
+                            
+                            print(f"📩 پیام: {text}")
+                            process_update(chat_id, text)
+                        
+                        # دریافت کلیک روی دکمه‌های inline
+                        elif upd.get("type") == "InlineMessage":
+                            chat_id = upd.get("chat_id")
+                            inline_msg = upd.get("inline_message", {})
+                            msg_id = inline_msg.get("message_id")
+                            data = inline_msg.get("data", {})
+                            button_id = data.get("id") if data else None
+                            
+                            if msg_id and msg_id in processed:
+                                continue
+                            if msg_id:
+                                processed.add(msg_id)
+                            
+                            if button_id:
+                                print(f"🔘 کلیک روی دکمه: {button_id}")
+                                process_update(chat_id, button_id)
 
             time.sleep(1)
 
