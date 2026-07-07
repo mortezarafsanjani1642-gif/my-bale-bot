@@ -2,14 +2,10 @@ import requests
 import time
 import json
 
-# ===================== تنظیمات =====================
-TOKEN = "BIJFAB0MVHQAPLZSKUQLWKYWBTLDWCEQCCBHOXLCLXUUARAVJTITTEJHIHWYMCOX"  # توکن خودت
+TOKEN = "BIJFAB0MVHQAPLZSKUQLWKYWBTLDWCEQCCBHOXLCLXUUARAVJTITTEJHIHWYMCOX"
 API_URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
 
-# ================ توابع ارتباطی ================
-
 def send_message(chat_id, text, keyboard=None):
-    """ارسال پیام با کیبورد دلخواه"""
     payload = {"chat_id": chat_id, "text": text}
     if keyboard:
         payload["reply_markup"] = keyboard
@@ -21,7 +17,6 @@ def send_message(chat_id, text, keyboard=None):
         print(f"❌ خطا: {e}")
 
 def get_updates(start_id=None):
-    """دریافت آپدیت‌ها با start_id"""
     payload = {}
     if start_id:
         payload["start_id"] = start_id
@@ -30,15 +25,14 @@ def get_updates(start_id=None):
         r = requests.post(f"{API_URL}/getUpdates", json=payload, timeout=15)
         if r.status_code == 200:
             return r.json()
-        return {}
+        else:
+            print(f"❌ HTTP Error: {r.status_code}")
+            return {}
     except Exception as e:
         print(f"❌ خطا در getUpdates: {e}")
         return {}
 
-# ================ ساخت کیبورد منو ================
-
-def main_menu_keyboard():
-    """چهار دکمه اصلی"""
+def main_menu():
     return {
         "keyboard": [
             [{"text": "🛍️ ثبت سفارش جدید"}],
@@ -49,65 +43,61 @@ def main_menu_keyboard():
         "resize_keyboard": True
     }
 
-# ================ پردازش پیام ================
-
 def process_message(chat_id, text):
-    """پردازش پیام دریافتی"""
     if text == "/start":
-        send_message(
-            chat_id,
-            "سلام! به ربات فروشگاهی خوش آمدید.\nلطفاً از منوی زیر استفاده کنید:",
-            main_menu_keyboard()
-        )
+        send_message(chat_id, "سلام! به ربات خوش آمدید.\nلطفاً از منو استفاده کنید:", main_menu())
     else:
-        # فعلاً فقط یک پاسخ ساده برای تست
-        send_message(chat_id, f"شما پیام دادید: {text}", main_menu_keyboard())
-
-# =================== حلقه اصلی ====================
+        send_message(chat_id, f"شما گفتید: {text}", main_menu())
 
 def main():
-    print("🚀 ربات تست راه‌اندازی شد...")
+    print("🚀 ربات تست با دیباگ شروع شد...")
     start_id = None
-    processed_messages = set()  # برای جلوگیری از تکرار
+    processed = set()
 
     while True:
         try:
-            updates = get_updates(start_id)
-            if updates.get("status") == "OK":
-                data = updates.get("data", {})
-                updates_list = data.get("updates", [])
-
-                if updates_list:
-                    print(f"📥 {len(updates_list)} آپدیت جدید دریافت شد.")
-
-                    # به‌روزرسانی start_id با آخرین update_time + 1
-                    last_time = max([u.get("update_time", 0) for u in updates_list])
-                    start_id = last_time + 1
-
-                    for upd in updates_list:
+            response = get_updates(start_id)
+            
+            # ====== چاپ کامل پاسخ برای دیباگ ======
+            print("\n📄 پاسخ کامل از سرور:")
+            print(json.dumps(response, indent=2, ensure_ascii=False))
+            print("====================================\n")
+            
+            if response.get("status") == "OK":
+                data = response.get("data", {})
+                updates = data.get("updates", [])
+                
+                if updates:
+                    print(f"📥 {len(updates)} آپدیت جدید.")
+                    
+                    # به‌روزرسانی start_id با next_offset_id
+                    if "next_offset_id" in data:
+                        start_id = data["next_offset_id"]
+                        print(f"🔄 start_id جدید: {start_id}")
+                    
+                    for upd in updates:
                         if upd.get("type") == "NewMessage":
                             chat_id = upd.get("chat_id")
-                            msg_data = upd.get("new_message", {})
-                            sender_id = msg_data.get("sender_id")
-                            text = msg_data.get("text", "")
-                            message_id = msg_data.get("message_id")
-
-                            if not chat_id or not sender_id:
+                            msg = upd.get("new_message", {})
+                            sender = msg.get("sender_id")
+                            text = msg.get("text", "")
+                            msg_id = msg.get("message_id")
+                            
+                            if not chat_id or not sender:
                                 continue
-
-                            # جلوگیری از پردازش تکراری
-                            if message_id and message_id in processed_messages:
+                            
+                            if msg_id and msg_id in processed:
                                 continue
-                            if message_id:
-                                processed_messages.add(message_id)
-
-                            print(f"📩 پیام از {sender_id}: {text}")
+                            if msg_id:
+                                processed.add(msg_id)
+                            
+                            print(f"📩 پیام از {sender}: {text}")
                             process_message(chat_id, text)
-
-            time.sleep(1)
-
+                            
+            time.sleep(2)
+            
         except KeyboardInterrupt:
-            print("\n🛑 ربات متوقف شد.")
+            print("\n🛑 توقف.")
             break
         except Exception as e:
             print(f"❌ خطا: {e}")
