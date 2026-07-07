@@ -647,22 +647,22 @@ def main():
     print(f"👤 ADMIN_ID: {ADMIN_ID}")
     print("⏳ در حال دریافت پیام‌ها...")
     
-    start_id = None
+    start_id = 0
     processed_messages = set()
 
     while True:
         try:
-            response = get_updates(start_id)
+            response = get_updates(start_id if start_id > 0 else None)
             if response.get("status") == "OK":
                 data = response.get("data", {})
                 updates = data.get("updates", [])
-                
-                # به‌روزرسانی start_id با next_offset_id
-                if "next_offset_id" in data:
-                    start_id = data["next_offset_id"]
-                    print(f"🔄 start_id جدید: {start_id}")
 
                 if updates:
+                    # پیدا کردن آخرین update_time
+                    last_update_time = max([u.get("update_time", 0) for u in updates])
+                    start_id = last_update_time + 1
+                    print(f"🔄 start_id جدید (بر اساس update_time): {start_id}")
+
                     print(f"📥 {len(updates)} آپدیت دریافت شد.")
                     
                     for upd in updates:
