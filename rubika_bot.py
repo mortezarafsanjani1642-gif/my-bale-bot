@@ -108,15 +108,15 @@ def send_photo(chat_id, photo_file_id, caption=None, keyboard=None):
     except Exception as e:
         print(f"❌ خطا در اتصال: {e}")
 
-# ========== تابع اصلاح شده get_updates ==========
+# ========== تابع اصلاح شده با POST ==========
 def get_updates(start_id=None):
-    params = {}
+    payload = {}
     if start_id:
-        params["start_id"] = start_id
-    params["timeout"] = 10  # کاهش timeout
+        payload["start_id"] = start_id
+    payload["timeout"] = 10
     
     try:
-        r = requests.get(f"{API_URL}/getUpdates", params=params, timeout=15)
+        r = requests.post(f"{API_URL}/getUpdates", json=payload, timeout=15)
         if r.status_code != 200:
             print(f"❌ HTTP خطا: {r.status_code}")
             return {}
@@ -126,19 +126,6 @@ def get_updates(start_id=None):
             print("⚠️ پاسخ خالی از سرور")
             return {}
         
-        # اگر پاسخ با '[' شروع شد، اولین شیء را بگیر
-        if content.startswith('['):
-            try:
-                data = json.loads(content)
-                if isinstance(data, list) and len(data) > 0:
-                    return data[0]
-                else:
-                    return {}
-            except:
-                print("⚠️ پاسخ آرایه‌ای اما نامعتبر")
-                return {}
-        
-        # parse به عنوان JSON شیء
         try:
             return json.loads(content)
         except json.JSONDecodeError as e:
