@@ -50,31 +50,24 @@ def process_message(chat_id, text):
         send_message(chat_id, f"شما گفتید: {text}", main_menu())
 
 def main():
-    print("🚀 ربات تست با دیباگ شروع شد...")
+    print("🚀 ربات با start_id و update_time شروع شد...")
     start_id = None
     processed = set()
 
     while True:
         try:
             response = get_updates(start_id)
-            
-            # ====== چاپ کامل پاسخ برای دیباگ ======
-            print("\n📄 پاسخ کامل از سرور:")
-            print(json.dumps(response, indent=2, ensure_ascii=False))
-            print("====================================\n")
-            
             if response.get("status") == "OK":
                 data = response.get("data", {})
                 updates = data.get("updates", [])
-                
+
                 if updates:
-                    print(f"📥 {len(updates)} آپدیت جدید.")
-                    
-                    # به‌روزرسانی start_id با next_offset_id
-                    if "next_offset_id" in data:
-                        start_id = data["next_offset_id"]
-                        print(f"🔄 start_id جدید: {start_id}")
-                    
+                    # محاسبه start_id جدید از آخرین update_time
+                    last_update_time = max([u.get("update_time", 0) for u in updates])
+                    start_id = last_update_time + 1  # ✅ کلید اصلی: استفاده از update_time
+
+                    print(f"📥 {len(updates)} آپدیت جدید. start_id جدید: {start_id}")
+
                     for upd in updates:
                         if upd.get("type") == "NewMessage":
                             chat_id = upd.get("chat_id")
@@ -82,20 +75,22 @@ def main():
                             sender = msg.get("sender_id")
                             text = msg.get("text", "")
                             msg_id = msg.get("message_id")
-                            
+
                             if not chat_id or not sender:
                                 continue
-                            
+
                             if msg_id and msg_id in processed:
                                 continue
                             if msg_id:
                                 processed.add(msg_id)
-                            
+
                             print(f"📩 پیام از {sender}: {text}")
                             process_message(chat_id, text)
-                            
-            time.sleep(2)
-            
+                else:
+                    # هیچ آپدیت جدیدی نیست
+                    pass
+
+            time.sleep(1)
         except KeyboardInterrupt:
             print("\n🛑 توقف.")
             break
