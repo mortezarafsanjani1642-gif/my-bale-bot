@@ -1,18 +1,18 @@
 import requests
 import time
+import json
 import os
 import random
 import string
-import json
 
 # ==================================================
 # ================ تنظیمات اولیه ==================
 # ==================================================
 
 TOKEN = "BIJFAB0MVHQAPLZSKUQLWKYWBTLDWCEQCCBHOXLCLXUUARAVJTITTEJHIHWYMCOX"
-ADMIN_ID = "u0BFJ3K03f5d8786134f2ab3c1ebfc40"
-
+ADMIN_ID = "u0BFJ3K03f5d8786134f2ab3c1ebfc40"  # شناسه ادمین
 API_URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
+
 SETTINGS_FILE = "settings.json"
 ORDERS_FILE = "orders.json"
 NEXT_PRODUCTION_DATE = "۱۵ تیر ۱۴۰۴"
@@ -84,47 +84,31 @@ def save_orders():
 # ============== توابع ارتباط با API ===============
 # ==================================================
 
-def send_message(chat_id, text, keyboard=None):
-    payload = {"chat_id": chat_id, "text": text}
-    if keyboard:
-        payload["reply_markup"] = keyboard
+def send_message(chat_id, text, chat_keypad=None, chat_keypad_type="New"):
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+    }
+    if chat_keypad:
+        payload["chat_keypad"] = chat_keypad
+        payload["chat_keypad_type"] = chat_keypad_type
     try:
         r = requests.post(f"{API_URL}/sendMessage", json=payload, timeout=10)
         if r.status_code != 200:
-            print(f"❌ خطا در ارسال پیام: {r.text}")
+            print(f"❌ خطا در ارسال: {r.text}")
+        else:
+            print("✅ پیام ارسال شد.")
     except Exception as e:
-        print(f"❌ خطا در اتصال: {e}")
+        print(f"❌ خطا: {e}")
 
-def send_photo(chat_id, photo_file_id, caption=None, keyboard=None):
-    payload = {"chat_id": chat_id, "photo": photo_file_id}
-    if caption:
-        payload["caption"] = caption
-    if keyboard:
-        payload["reply_markup"] = keyboard
+def get_updates():
     try:
-        r = requests.post(f"{API_URL}/sendPhoto", json=payload, timeout=30)
-        if r.status_code != 200:
-            print(f"❌ خطا در ارسال عکس: {r.text}")
+        r = requests.post(f"{API_URL}/getUpdates", json={"timeout": 5}, timeout=10)
+        if r.status_code == 200:
+            return r.json()
+        return {}
     except Exception as e:
-        print(f"❌ خطا در اتصال: {e}")
-
-# ========== استفاده از start_id به جای offset ==========
-def get_updates(start_id=None):
-    payload = {}
-    if start_id:
-        payload["start_id"] = start_id
-    payload["timeout"] = 10
-    try:
-        r = requests.post(f"{API_URL}/getUpdates", json=payload, timeout=15)
-        if r.status_code != 200:
-            print(f"❌ HTTP خطا: {r.status_code}")
-            return {}
-        content = r.text.strip()
-        if not content:
-            return {}
-        return json.loads(content)
-    except Exception as e:
-        print(f"❌ خطا در دریافت آپدیت: {e}")
+        print(f"❌ خطا: {e}")
         return {}
 
 # ==================================================
@@ -149,9 +133,6 @@ def calculate_price_range(product_prices, quantity_text):
     max_price = int(product_prices['max'] * weight)
     return min_price, max_price
 
-def remove_keyboard():
-    return {"remove_keyboard": True}
-
 def refresh_products():
     global PRODUCTS
     settings = load_settings()
@@ -161,75 +142,73 @@ def refresh_products():
 # ================ ساخت کیبوردها ===================
 # ==================================================
 
-def build_back_keyboard():
-    return {"keyboard": [[{"text": "🔙 بازگشت"}]], "resize_keyboard": True}
-
 def build_main_menu():
-    return {"keyboard": [
-        [{"text": "🛍️ ثبت سفارش جدید"}],
-        [{"text": "💰 ارسال رسید پرداخت"}],
-        [{"text": "✏️ تغییر سفارش"}],
-        [{"text": "🔍 پیگیری سفارش"}]
-    ], "resize_keyboard": True}
+    return {
+        "rows": [
+            {"buttons": [{"id": "1", "type": "Simple", "button_text": "🛍️ ثبت سفارش جدید"}]},
+            {"buttons": [{"id": "2", "type": "Simple", "button_text": "💰 ارسال رسید پرداخت"}]},
+            {"buttons": [{"id": "3", "type": "Simple", "button_text": "✏️ تغییر سفارش"}]},
+            {"buttons": [{"id": "4", "type": "Simple", "button_text": "🔍 پیگیری سفارش"}]}
+        ],
+        "resize_keyboard": True,
+        "one_time_keyboard": False
+    }
 
-def build_product_keyboard():
-    kb = [[{"text": p}] for p in PRODUCTS.keys()]
-    kb.append([{"text": "🔙 بازگشت"}])
-    return {"keyboard": kb, "resize_keyboard": True}
+def build_back_keyboard():
+    return {
+        "rows": [
+            {"buttons": [{"id": "back", "type": "Simple", "button_text": "🔙 بازگشت"}]}
+        ],
+        "resize_keyboard": True,
+        "one_time_keyboard": False
+    }
+
+def build_product_keyboard(products):
+    rows = []
+    for p in products:
+        rows.append({"buttons": [{"id": p, "type": "Simple", "button_text": p}]})
+    rows.append({"buttons": [{"id": "back", "type": "Simple", "button_text": "🔙 بازگشت"}]})
+    return {
+        "rows": rows,
+        "resize_keyboard": True,
+        "one_time_keyboard": False
+    }
 
 def build_quantity_keyboard():
-    kb = [[{"text": q}] for q in QUANTITIES.keys()]
-    kb.append([{"text": "🔙 بازگشت"}])
-    return {"keyboard": kb, "resize_keyboard": True}
-
-def build_yes_no_keyboard():
-    return {"keyboard": [
-        [{"text": "✅ بله، ارسال کن"}],
-        [{"text": "❌ نه، خودم می‌گیرم"}],
-        [{"text": "🔙 بازگشت"}]
-    ], "resize_keyboard": True}
+    rows = []
+    for q in QUANTITIES.keys():
+        rows.append({"buttons": [{"id": q, "type": "Simple", "button_text": q}]})
+    rows.append({"buttons": [{"id": "back", "type": "Simple", "button_text": "🔙 بازگشت"}]})
+    return {
+        "rows": rows,
+        "resize_keyboard": True,
+        "one_time_keyboard": False
+    }
 
 def build_confirmation_keyboard():
-    return {"keyboard": [
-        [{"text": "✅ ثبت سفارش"}],
-        [{"text": "🔙 بازگشت"}]
-    ], "resize_keyboard": True}
-
-def build_edit_cancel_keyboard(tracking):
-    return {"keyboard": [
-        [{"text": f"✏️ ویرایش سفارش {tracking}"}],
-        [{"text": f"❌ لغو سفارش {tracking}"}],
-        [{"text": "🔙 بازگشت"}]
-    ], "resize_keyboard": True}
+    return {
+        "rows": [
+            {"buttons": [{"id": "confirm", "type": "Simple", "button_text": "✅ ثبت سفارش"}]},
+            {"buttons": [{"id": "back", "type": "Simple", "button_text": "🔙 بازگشت"}]}
+        ],
+        "resize_keyboard": True,
+        "one_time_keyboard": False
+    }
 
 def build_admin_panel():
-    return {"keyboard": [
-        [{"text": "📋 سفارش‌های باز (ثبت اولیه)"}],
-        [{"text": "💰 سفارش‌های پرداخت نشده"}],
-        [{"text": "✅ رسیدهای تایید شده"}],
-        [{"text": "❌ رسیدهای رد شده"}],
-        [{"text": "⏳ رسیدهای در انتظار تایید"}],
-        [{"text": "📋 لیست همه سفارش‌ها"}],
-        [{"text": "🛠 مدیریت محصولات"}],
-        [{"text": "🔓 وضعیت سفارش‌گذاری"}],
-        [{"text": "🚫 لغو سفارش"}],
-        [{"text": "🗑️ حذف همیشگی سفارش"}],
-        [{"text": "📊 داشبورد"}]
-    ], "resize_keyboard": True}
-
-def build_dashboard_menu():
-    return {"keyboard": [
-        [{"text": "📊 اطلاعات وضعیت سفارش‌ها"}],
-        [{"text": "📦 محصولات تولید شده"}],
-        [{"text": "🔙 بازگشت"}]
-    ], "resize_keyboard": True}
-
-def build_admin_confirm_keyboard(tracking):
-    return {"keyboard": [
-        [{"text": f"✅ تایید رسید {tracking}"}],
-        [{"text": f"❌ رد رسید {tracking}"}],
-        [{"text": "🔙 بازگشت"}]
-    ], "resize_keyboard": True}
+    return {
+        "rows": [
+            {"buttons": [{"id": "admin_open", "type": "Simple", "button_text": "📋 سفارش‌های باز"}]},
+            {"buttons": [{"id": "admin_pending", "type": "Simple", "button_text": "💰 در انتظار رسید"}]},
+            {"buttons": [{"id": "admin_verified", "type": "Simple", "button_text": "✅ رسیدهای تایید شده"}]},
+            {"buttons": [{"id": "admin_rejected", "type": "Simple", "button_text": "❌ رسیدهای رد شده"}]},
+            {"buttons": [{"id": "admin_all", "type": "Simple", "button_text": "📋 لیست همه سفارش‌ها"}]},
+            {"buttons": [{"id": "admin_products", "type": "Simple", "button_text": "🛠 مدیریت محصولات"}]},
+            {"buttons": [{"id": "admin_status", "type": "Simple", "button_text": "🔓 وضعیت سفارش‌گذاری"}]}
+        ],
+        "resize_keyboard": True,
+        "one_time_keyboard": False
+    }
 
 # ==================================================
 # ============== منطق اصلی ربات ====================
@@ -244,21 +223,25 @@ load_orders()
 
 # ---------- بخش مدیریت محصولات ----------
 def handle_admin_products(chat_id, command):
-    if command == "🛠 مدیریت محصولات":
-        keyboard = {"keyboard": [
-            [{"text": "➕ افزودن محصول جدید"}],
-            [{"text": "📋 لیست محصولات"}],
-            [{"text": "❌ حذف محصول"}],
-            [{"text": "🔙 بازگشت"}]
-        ], "resize_keyboard": True}
+    if command == "🛠 مدیریت محصولات" or command == "admin_products":
+        keyboard = {
+            "rows": [
+                {"buttons": [{"id": "add_product", "type": "Simple", "button_text": "➕ افزودن محصول جدید"}]},
+                {"buttons": [{"id": "list_products", "type": "Simple", "button_text": "📋 لیست محصولات"}]},
+                {"buttons": [{"id": "delete_product", "type": "Simple", "button_text": "❌ حذف محصول"}]},
+                {"buttons": [{"id": "back", "type": "Simple", "button_text": "🔙 بازگشت"}]}
+            ],
+            "resize_keyboard": True,
+            "one_time_keyboard": False
+        }
         send_message(chat_id, "🛠 مدیریت محصولات:\nلطفاً یکی از گزینه‌ها را انتخاب کنید:", keyboard)
         user_data[chat_id] = {"state": "ADMIN_PRODUCTS_MENU"}
     
-    elif command == "➕ افزودن محصول جدید":
-        send_message(chat_id, "🔤 نام محصول را وارد کنید:", remove_keyboard())
+    elif command == "➕ افزودن محصول جدید" or command == "add_product":
+        send_message(chat_id, "🔤 نام محصول را وارد کنید:", build_back_keyboard())
         user_data[chat_id] = {"state": "ADMIN_ADD_PRODUCT_NAME"}
     
-    elif command == "📋 لیست محصولات":
+    elif command == "📋 لیست محصولات" or command == "list_products":
         if not PRODUCTS:
             send_message(chat_id, "📭 هیچ محصولی ثبت نشده است.", build_admin_panel())
             return
@@ -268,11 +251,15 @@ def handle_admin_products(chat_id, command):
         send_message(chat_id, msg, build_admin_panel())
         user_data.pop(chat_id, None)
     
-    elif command == "❌ حذف محصول":
+    elif command == "❌ حذف محصول" or command == "delete_product":
         if not PRODUCTS:
             send_message(chat_id, "📭 هیچ محصولی برای حذف وجود ندارد.", build_admin_panel())
             return
-        keyboard = {"keyboard": [[{"text": p}] for p in PRODUCTS.keys()] + [[{"text": "🔙 بازگشت"}]], "resize_keyboard": True}
+        rows = []
+        for p in PRODUCTS.keys():
+            rows.append({"buttons": [{"id": f"del_{p}", "type": "Simple", "button_text": p}]})
+        rows.append({"buttons": [{"id": "back", "type": "Simple", "button_text": "🔙 بازگشت"}]})
+        keyboard = {"rows": rows, "resize_keyboard": True, "one_time_keyboard": False}
         send_message(chat_id, "❌ محصول مورد نظر را برای حذف انتخاب کنید:", keyboard)
         user_data[chat_id] = {"state": "ADMIN_DELETE_PRODUCT"}
 
@@ -283,7 +270,7 @@ def handle_add_product_name(chat_id, text):
         return
     user_data[chat_id]["new_product_name"] = text
     user_data[chat_id]["state"] = "ADMIN_ADD_PRODUCT_MIN"
-    send_message(chat_id, f"✅ نام '{text}' ثبت شد.\n\nلطفاً حداقل قیمت (به تومان) را وارد کنید:\nمثال: 1500000", remove_keyboard())
+    send_message(chat_id, f"✅ نام '{text}' ثبت شد.\n\nلطفاً حداقل قیمت (به تومان) را وارد کنید:\nمثال: 1500000", build_back_keyboard())
 
 def handle_add_product_min(chat_id, text):
     try:
@@ -293,7 +280,7 @@ def handle_add_product_min(chat_id, text):
             return
         user_data[chat_id]["new_min"] = min_price
         user_data[chat_id]["state"] = "ADMIN_ADD_PRODUCT_MAX"
-        send_message(chat_id, f"✅ حداقل قیمت {min_price:,} تومان ثبت شد.\n\nلطفاً حداکثر قیمت (به تومان) را وارد کنید:\nمثال: 1700000", remove_keyboard())
+        send_message(chat_id, f"✅ حداقل قیمت {min_price:,} تومان ثبت شد.\n\nلطفاً حداکثر قیمت (به تومان) را وارد کنید:\nمثال: 1700000", build_back_keyboard())
     except ValueError:
         send_message(chat_id, "❌ لطفاً یک عدد معتبر وارد کنید:")
 
@@ -341,111 +328,6 @@ def handle_admin_order_status(chat_id):
     status_text = "باز ✅" if new_status == "open" else "بسته ❌"
     send_message(chat_id, f"🔓 وضعیت سفارش‌گذاری به '{status_text}' تغییر کرد.", build_admin_panel())
 
-# ---------- مدیریت لغو و حذف سفارش توسط ادمین ----------
-def handle_admin_cancel_order(chat_id, text):
-    state = user_data.get(chat_id, {}).get("state")
-    if state == "ADMIN_CANCEL_GET_TRACKING":
-        if text == "🔙 بازگشت":
-            send_message(chat_id, "به پنل مدیریت بازگشتید.", build_admin_panel())
-            user_data.pop(chat_id, None)
-            return
-        tracking = normalize_persian_numbers(text.strip())
-        if tracking in orders:
-            orders[tracking]['status'] = 'cancelled'
-            save_orders()
-            try:
-                user_chat_id = orders[tracking].get('chat_id')
-                if user_chat_id:
-                    send_message(user_chat_id,
-                        f"🚫 سفارش شما با کد پیگیری {tracking} توسط مدیر لغو شد.\n"
-                        f"در صورت نیاز با پشتیبانی تماس بگیرید."
-                    )
-            except:
-                pass
-            send_message(chat_id, f"✅ سفارش {tracking} با موفقیت لغو شد.", build_admin_panel())
-            user_data.pop(chat_id, None)
-        else:
-            send_message(chat_id, "❌ کد پیگیری نامعتبر است. لطفاً دوباره وارد کنید:", build_back_keyboard())
-    else:
-        send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش مورد نظر برای لغو را وارد کنید:", build_back_keyboard())
-        user_data[chat_id] = {"state": "ADMIN_CANCEL_GET_TRACKING"}
-
-def handle_admin_delete_order(chat_id, text):
-    state = user_data.get(chat_id, {}).get("state")
-    if state == "ADMIN_DELETE_GET_TRACKING":
-        if text == "🔙 بازگشت":
-            send_message(chat_id, "به پنل مدیریت بازگشتید.", build_admin_panel())
-            user_data.pop(chat_id, None)
-            return
-        tracking = normalize_persian_numbers(text.strip())
-        if tracking in orders:
-            order = orders.pop(tracking)
-            save_orders()
-            try:
-                user_chat_id = order.get('chat_id')
-                if user_chat_id:
-                    send_message(user_chat_id,
-                        f"🗑️ سفارش شما با کد پیگیری {tracking} به طور کامل از سیستم حذف شد."
-                    )
-            except:
-                pass
-            send_message(chat_id, f"✅ سفارش {tracking} با موفقیت حذف شد.", build_admin_panel())
-            user_data.pop(chat_id, None)
-        else:
-            send_message(chat_id, "❌ کد پیگیری نامعتبر است. لطفاً دوباره وارد کنید:", build_back_keyboard())
-    else:
-        send_message(chat_id, "🔑 لطفاً کد پیگیری سفارش مورد نظر برای حذف کامل را وارد کنید:", build_back_keyboard())
-        user_data[chat_id] = {"state": "ADMIN_DELETE_GET_TRACKING"}
-
-# ---------- داشبورد ----------
-def handle_admin_dashboard(chat_id):
-    send_message(chat_id, "📊 داشبورد مدیریت:\nلطفاً یکی از گزینه‌های زیر را انتخاب کنید:", build_dashboard_menu())
-    user_data[chat_id] = {"state": "ADMIN_DASHBOARD_MENU"}
-
-def handle_dashboard_status(chat_id):
-    if not orders:
-        send_message(chat_id, "📭 هیچ سفارشی در سیستم ثبت نشده است.", build_admin_panel())
-        user_data.pop(chat_id, None)
-        return
-    
-    stats = {"registered": 0, "pending_payment": 0, "payment_verified": 0, "payment_rejected": 0, "cancelled": 0}
-    for order in orders.values():
-        status = order.get('status', 'registered')
-        if status in stats: stats[status] += 1
-    total = sum(stats.values())
-    msg = (
-        f"📊 اطلاعات وضعیت سفارش‌ها:\n\n"
-        f"📝 ثبت اولیه: {stats['registered']}\n"
-        f"💰 در انتظار رسید: {stats['pending_payment']}\n"
-        f"✅ تایید شده: {stats['payment_verified']}\n"
-        f"❌ رد شده: {stats['payment_rejected']}\n"
-        f"🚫 لغو شده: {stats['cancelled']}\n"
-        f"━━━━━━━━━━━━━━━\n"
-        f"📦 مجموع کل: {total}"
-    )
-    send_message(chat_id, msg, build_dashboard_menu())
-
-def handle_dashboard_products(chat_id):
-    if not orders:
-        send_message(chat_id, "📭 هیچ سفارشی ثبت نشده.", build_admin_panel())
-        user_data.pop(chat_id, None)
-        return
-    product_stats = {}
-    for order in orders.values():
-        if order.get('status') == 'payment_verified':
-            for item in order.get('items', []):
-                name = item.get('product', 'نامشخص')
-                product_stats[name] = product_stats.get(name, 0) + 1
-    if not product_stats:
-        send_message(chat_id, "📭 هیچ محصول تایید شده‌ای یافت نشد.", build_dashboard_menu())
-        return
-    sorted_products = sorted(product_stats.items(), key=lambda x: x[1], reverse=True)
-    msg = "📦 آمار محصولات تولید شده (تایید شده):\n\n"
-    for idx, (name, count) in enumerate(sorted_products, 1):
-        msg += f"{idx}. {name}: {count} سفارش\n"
-    msg += f"\n📊 مجموع کل: {sum(product_stats.values())} سفارش"
-    send_message(chat_id, msg, build_dashboard_menu())
-
 # ---------- فرآیند ثبت سفارش کاربر ----------
 def start_new_order(chat_id):
     if ORDER_STATUS == "closed":
@@ -453,7 +335,7 @@ def start_new_order(chat_id):
         return
     user_data[chat_id] = {"state": "PRODUCT_SELECTION", "items": [], "total_price": 0}
     welcome = f"🎉 خوش آمدید!\n📅 تاریخ تولید بعدی: {NEXT_PRODUCTION_DATE}\nلطفاً محصول خود را انتخاب کنید:"
-    send_message(chat_id, welcome, build_product_keyboard())
+    send_message(chat_id, welcome, build_product_keyboard(PRODUCTS.keys()))
 
 def handle_product_selection(chat_id, text):
     if text in PRODUCTS:
@@ -463,7 +345,7 @@ def handle_product_selection(chat_id, text):
         user_data[chat_id]["state"] = "QUANTITY_SELECTION"
         send_message(chat_id, f"✅ {text} انتخاب شد.\nحالا مقدار را انتخاب کنید:", build_quantity_keyboard())
     else:
-        send_message(chat_id, "لطفاً یکی از محصولات موجود را انتخاب کنید.", build_product_keyboard())
+        send_message(chat_id, "لطفاً یکی از محصولات موجود را انتخاب کنید.", build_product_keyboard(PRODUCTS.keys()))
 
 def handle_quantity_selection(chat_id, text):
     if text in QUANTITIES:
@@ -479,11 +361,15 @@ def handle_quantity_selection(chat_id, text):
         user_data[chat_id]["items"].append(item)
         user_data[chat_id]["total_price"] += avg_price
         
-        keyboard = {"keyboard": [
-            [{"text": "✅ بله، محصول دیگر"}],
-            [{"text": "❌ نه، ادامه ثبت سفارش"}],
-            [{"text": "🔙 بازگشت"}]
-        ], "resize_keyboard": True}
+        keyboard = {
+            "rows": [
+                {"buttons": [{"id": "yes", "type": "Simple", "button_text": "✅ بله، محصول دیگر"}]},
+                {"buttons": [{"id": "no", "type": "Simple", "button_text": "❌ نه، ادامه ثبت سفارش"}]},
+                {"buttons": [{"id": "back", "type": "Simple", "button_text": "🔙 بازگشت"}]}
+            ],
+            "resize_keyboard": True,
+            "one_time_keyboard": False
+        }
         send_message(chat_id, f"✅ {text} اضافه شد.\nآیا محصول دیگری می‌خواهید؟", keyboard)
         user_data[chat_id]["state"] = "ASK_MORE_PRODUCTS"
     else:
@@ -492,7 +378,7 @@ def handle_quantity_selection(chat_id, text):
 def handle_ask_more_products(chat_id, text):
     if text == "✅ بله، محصول دیگر":
         user_data[chat_id]["state"] = "PRODUCT_SELECTION"
-        send_message(chat_id, "محصول بعدی را انتخاب کنید:", build_product_keyboard())
+        send_message(chat_id, "محصول بعدی را انتخاب کنید:", build_product_keyboard(PRODUCTS.keys()))
     elif text == "❌ نه، ادامه ثبت سفارش":
         items = user_data[chat_id]["items"]
         total = user_data[chat_id]["total_price"]
@@ -505,8 +391,6 @@ def handle_ask_more_products(chat_id, text):
     elif text == "🔙 بازگشت":
         send_message(chat_id, "به منوی اصلی بازگشتید.", build_main_menu())
         user_data.pop(chat_id, None)
-    else:
-        handle_quantity_selection(chat_id, text)
 
 def handle_confirm_order(chat_id, text):
     if text == "✅ ثبت سفارش":
@@ -525,12 +409,10 @@ def handle_confirm_order(chat_id, text):
         save_orders()
         send_message(chat_id, f"✅ سفارش شما با کد پیگیری {tracking} ثبت شد.\n\nجهت تکمیل سفارش، رسید پرداخت را ارسال کنید.", build_main_menu())
         user_data.pop(chat_id, None)
-        send_message(ADMIN_ID, f"📢 سفارش جدید!\nکد: {tracking}\nکاربر: {chat_id}\nمبلغ: {order_data['total_price']:,} تومان")
+        send_message(ADMIN_ID, f"📢 سفارش جدید!\nکد: {tracking}\nکاربر: {chat_id}\nمبلغ: {order_data['total_price']:,} تومان", build_admin_panel())
     elif text == "🔙 بازگشت":
         send_message(chat_id, "ثبت سفارش لغو شد.", build_main_menu())
         user_data.pop(chat_id, None)
-    else:
-        send_message(chat_id, "لطفاً یکی از گزینه‌ها را انتخاب کنید.", build_confirmation_keyboard())
 
 # ---------- ارسال رسید پرداخت ----------
 def handle_receipt(chat_id, text):
@@ -546,7 +428,7 @@ def handle_receipt(chat_id, text):
         if tracking in orders:
             user_data[chat_id]["receipt_tracking"] = tracking
             user_data[chat_id]["state"] = "RECEIPT_GET_DESC"
-            send_message(chat_id, "💬 توضیحات یا مبلغ واریزی را وارد کنید (یا هر پیامی که ادمین ببیند):", remove_keyboard())
+            send_message(chat_id, "💬 توضیحات یا مبلغ واریزی را وارد کنید (یا هر پیامی که ادمین ببیند):", build_back_keyboard())
         else:
             send_message(chat_id, "❌ کد پیگیری نامعتبر است. دوباره وارد کنید:", build_back_keyboard())
     elif user_data.get(chat_id, {}).get("state") == "RECEIPT_GET_DESC":
@@ -576,7 +458,13 @@ def handle_track_order(chat_id, text):
         tracking = normalize_persian_numbers(text.strip())
         if tracking in orders:
             order = orders[tracking]
-            status_text = {"registered": "📝 ثبت شده", "pending_payment": "💰 در انتظار پرداخت", "payment_verified": "✅ تایید شده", "payment_rejected": "❌ رد شده", "cancelled": "🚫 لغو شده"}.get(order.get('status'), "نامشخص")
+            status_text = {
+                "registered": "📝 ثبت شده", 
+                "pending_payment": "💰 در انتظار پرداخت", 
+                "payment_verified": "✅ تایید شده", 
+                "payment_rejected": "❌ رد شده", 
+                "cancelled": "🚫 لغو شده"
+            }.get(order.get('status'), "نامشخص")
             items_text = "\n".join([f"- {i['product']} {i['quantity_text']}" for i in order.get('items', [])])
             msg = f"📋 سفارش {tracking}\nوضعیت: {status_text}\n\n{items_text}\n💰 مجموع: {order.get('total_price', 0):,} تومان"
             send_message(chat_id, msg, build_main_menu())
@@ -586,7 +474,7 @@ def handle_track_order(chat_id, text):
 
 def handle_edit_order(chat_id, text):
     if text == "✏️ تغییر سفارش":
-        send_message(chat_id, "🔑 کد پیگیری سفارش خود را برای ویرایش یا لغو وارد کنید:", build_back_keyboard())
+        send_message(chat_id, "🔑 کد پیگیری سفارش خود را برای لغو وارد کنید:", build_back_keyboard())
         user_data[chat_id] = {"state": "EDIT_GET_CODE"}
     elif user_data.get(chat_id, {}).get("state") == "EDIT_GET_CODE":
         if text == "🔙 بازگشت":
@@ -596,20 +484,25 @@ def handle_edit_order(chat_id, text):
         tracking = normalize_persian_numbers(text.strip())
         if tracking in orders:
             if orders[tracking].get('status') in ['registered', 'pending_payment']:
-                send_message(chat_id, f"سفارش {tracking} پیدا شد. چه اقدامی می‌خواهید انجام دهید؟", build_edit_cancel_keyboard(tracking))
+                keyboard = {
+                    "rows": [
+                        {"buttons": [{"id": f"cancel_{tracking}", "type": "Simple", "button_text": f"❌ لغو سفارش {tracking}"}]},
+                        {"buttons": [{"id": "back", "type": "Simple", "button_text": "🔙 بازگشت"}]}
+                    ],
+                    "resize_keyboard": True,
+                    "one_time_keyboard": False
+                }
+                send_message(chat_id, f"سفارش {tracking} پیدا شد. آیا می‌خواهید آن را لغو کنید؟", keyboard)
                 user_data[chat_id]["edit_tracking"] = tracking
                 user_data[chat_id]["state"] = "EDIT_CHOOSE_ACTION"
             else:
-                send_message(chat_id, f"❌ سفارش {tracking} در وضعیت '{orders[tracking].get('status')}' قابل ویرایش نیست.", build_main_menu())
+                send_message(chat_id, f"❌ سفارش {tracking} در وضعیت '{orders[tracking].get('status')}' قابل لغو نیست.", build_main_menu())
                 user_data.pop(chat_id, None)
         else:
             send_message(chat_id, "❌ کد نامعتبر.", build_back_keyboard())
     elif user_data.get(chat_id, {}).get("state") == "EDIT_CHOOSE_ACTION":
         tracking = user_data[chat_id]["edit_tracking"]
-        if text == f"✏️ ویرایش سفارش {tracking}":
-            send_message(chat_id, "برای ویرایش، لطفاً سفارش جدید ثبت کنید و سفارش قبلی را لغو نمایید.", build_main_menu())
-            user_data.pop(chat_id, None)
-        elif text == f"❌ لغو سفارش {tracking}":
+        if text == f"❌ لغو سفارش {tracking}":
             if tracking in orders:
                 orders[tracking]['status'] = 'cancelled'
                 save_orders()
@@ -621,58 +514,26 @@ def handle_edit_order(chat_id, text):
         elif text == "🔙 بازگشت":
             send_message(chat_id, "به منوی اصلی بازگشتید.", build_main_menu())
             user_data.pop(chat_id, None)
-        else:
-            send_message(chat_id, "لطفاً از دکمه‌ها استفاده کنید.", build_edit_cancel_keyboard(tracking))
 
 # ---------- پنل ادمین ----------
 def handle_admin_commands(chat_id, text):
-    if text == "📋 سفارش‌های باز (ثبت اولیه)":
+    if text == "📋 سفارش‌های باز" or text == "admin_open":
         found = [f"{k}: {v['items'][0]['product']} - {v['total_price']:,} تومان" for k, v in orders.items() if v.get('status') == 'registered']
         send_message(chat_id, "📋 سفارش‌های باز:\n" + ("\n".join(found) if found else "هیچ سفارش بازی وجود ندارد."), build_admin_panel())
     
-    elif text == "💰 سفارش‌های پرداخت نشده":
+    elif text == "💰 در انتظار رسید" or text == "admin_pending":
         found = [f"{k}: {v.get('receipt_desc', 'بدون توضیح')}" for k, v in orders.items() if v.get('status') == 'pending_payment']
         send_message(chat_id, "💰 در انتظار رسید:\n" + ("\n".join(found) if found else "هیچ سفارشی در انتظار رسید نیست."), build_admin_panel())
     
-    elif text == "✅ رسیدهای تایید شده":
+    elif text == "✅ رسیدهای تایید شده" or text == "admin_verified":
         found = [f"{k}: {v['total_price']:,} تومان" for k, v in orders.items() if v.get('status') == 'payment_verified']
         send_message(chat_id, "✅ تایید شده:\n" + ("\n".join(found) if found else "هیچ سفارش تایید شده‌ای وجود ندارد."), build_admin_panel())
     
-    elif text == "❌ رسیدهای رد شده":
+    elif text == "❌ رسیدهای رد شده" or text == "admin_rejected":
         found = [f"{k}" for k, v in orders.items() if v.get('status') == 'payment_rejected']
         send_message(chat_id, "❌ رد شده:\n" + ("\n".join(found) if found else "هیچ سفارش رد شده‌ای وجود ندارد."), build_admin_panel())
     
-    elif text == "⏳ رسیدهای در انتظار تایید":
-        found = [f"{k}: {v.get('receipt_desc', '')}" for k, v in orders.items() if v.get('status') == 'pending_payment']
-        if found:
-            for item in found:
-                send_message(chat_id, f"⏳ {item}", build_admin_confirm_keyboard(item.split(":")[0]))
-        else:
-            send_message(chat_id, "هیچ رسید در انتظار تاییدی نیست.", build_admin_panel())
-    
-    elif text.startswith("✅ تایید رسید") or text.startswith("❌ رد رسید"):
-        parts = text.split()
-        if len(parts) == 3:
-            tracking = parts[2]
-            if tracking in orders:
-                if "تایید" in text:
-                    orders[tracking]['status'] = 'payment_verified'
-                    save_orders()
-                    send_message(chat_id, f"✅ رسید {tracking} تایید شد.", build_admin_panel())
-                    try:
-                        send_message(orders[tracking]['chat_id'], f"✅ سفارش {tracking} تایید شد. متشکریم!")
-                    except: pass
-                else:
-                    orders[tracking]['status'] = 'payment_rejected'
-                    save_orders()
-                    send_message(chat_id, f"❌ رسید {tracking} رد شد.", build_admin_panel())
-                    try:
-                        send_message(orders[tracking]['chat_id'], f"❌ رسید سفارش {tracking} رد شد. لطفاً مجدداً ارسال کنید.")
-                    except: pass
-            else:
-                send_message(chat_id, "❌ کد پیگیری نامعتبر!", build_admin_panel())
-    
-    elif text == "📋 لیست همه سفارش‌ها":
+    elif text == "📋 لیست همه سفارش‌ها" or text == "admin_all":
         if not orders:
             send_message(chat_id, "📭 هیچ سفارشی وجود ندارد.", build_admin_panel())
             return
@@ -681,16 +542,10 @@ def handle_admin_commands(chat_id, text):
             msg += f"{k}: {v.get('status')} - {v['total_price']:,} تومان\n"
         send_message(chat_id, msg, build_admin_panel())
     
-    elif text == "🛠 مدیریت محصولات":
+    elif text == "🛠 مدیریت محصولات" or text == "admin_products":
         handle_admin_products(chat_id, text)
-    elif text == "🔓 وضعیت سفارش‌گذاری":
+    elif text == "🔓 وضعیت سفارش‌گذاری" or text == "admin_status":
         handle_admin_order_status(chat_id)
-    elif text == "🚫 لغو سفارش":
-        handle_admin_cancel_order(chat_id, text)
-    elif text == "🗑️ حذف همیشگی سفارش":
-        handle_admin_delete_order(chat_id, text)
-    elif text == "📊 داشبورد":
-        handle_admin_dashboard(chat_id)
 
 # ---------- پردازش پیام ورودی ----------
 def process_update(chat_id, sender_id, text):
@@ -698,9 +553,13 @@ def process_update(chat_id, sender_id, text):
         send_message(chat_id, "سلام! به ربات فروشگاهی خوش آمدید.\nلطفاً از منوی زیر استفاده کنید:", build_main_menu())
         return
 
+    # پنل ادمین
     if sender_id == ADMIN_ID:
         state = user_data.get(chat_id, {}).get("state", "")
-        if state == "ADMIN_ADD_PRODUCT_NAME":
+        if state == "ADMIN_PRODUCTS_MENU":
+            handle_admin_products(chat_id, text)
+            return
+        elif state == "ADMIN_ADD_PRODUCT_NAME":
             handle_add_product_name(chat_id, text)
             return
         elif state == "ADMIN_ADD_PRODUCT_MIN":
@@ -712,35 +571,15 @@ def process_update(chat_id, sender_id, text):
         elif state == "ADMIN_DELETE_PRODUCT":
             handle_delete_product(chat_id, text)
             return
-        elif state == "ADMIN_CANCEL_GET_TRACKING":
-            handle_admin_cancel_order(chat_id, text)
-            return
-        elif state == "ADMIN_DELETE_GET_TRACKING":
-            handle_admin_delete_order(chat_id, text)
-            return
-        elif state == "ADMIN_DASHBOARD_MENU":
-            if text == "📊 اطلاعات وضعیت سفارش‌ها":
-                handle_dashboard_status(chat_id)
-            elif text == "📦 محصولات تولید شده":
-                handle_dashboard_products(chat_id)
-            elif text == "🔙 بازگشت":
-                send_message(chat_id, "به پنل مدیریت بازگشتید.", build_admin_panel())
-                user_data.pop(chat_id, None)
-            return
-        elif state == "ADMIN_PRODUCTS_MENU":
-            handle_admin_products(chat_id, text)
-            return
 
-        if text in ["📋 سفارش‌های باز (ثبت اولیه)", "💰 سفارش‌های پرداخت نشده", 
-                    "✅ رسیدهای تایید شده", "❌ رسیدهای رد شده", "⏳ رسیدهای در انتظار تایید",
-                    "📋 لیست همه سفارش‌ها", "🛠 مدیریت محصولات", "🔓 وضعیت سفارش‌گذاری",
-                    "🚫 لغو سفارش", "🗑️ حذف همیشگی سفارش", "📊 داشبورد"]:
-            handle_admin_commands(chat_id, text)
-            return
-        if text.startswith("✅ تایید رسید") or text.startswith("❌ رد رسید"):
+        # فرمان‌های پنل ادمین
+        if text in ["📋 سفارش‌های باز", "💰 در انتظار رسید", "✅ رسیدهای تایید شده", 
+                    "❌ رسیدهای رد شده", "📋 لیست همه سفارش‌ها", "🛠 مدیریت محصولات", 
+                    "🔓 وضعیت سفارش‌گذاری"]:
             handle_admin_commands(chat_id, text)
             return
 
+    # منوی کاربر معمولی
     state = user_data.get(chat_id, {}).get("state", "")
     
     if state == "PRODUCT_SELECTION":
@@ -781,6 +620,7 @@ def process_update(chat_id, sender_id, text):
         handle_edit_order(chat_id, text)
         return
     
+    # منوی اصلی
     if text == "🛍️ ثبت سفارش جدید":
         start_new_order(chat_id)
     elif text == "💰 ارسال رسید پرداخت":
@@ -797,47 +637,41 @@ def process_update(chat_id, sender_id, text):
 # ==================================================
 
 def main():
-    print("🚀 ربات روبیکا شروع به کار کرد...")
+    print("🚀 ربات فروشگاهی روبیکا شروع به کار کرد...")
     print(f"👤 ADMIN_ID: {ADMIN_ID}")
     print("⏳ در حال دریافت پیام‌ها...")
     
-    start_id = None
-    processed_messages = set()
-    
+    last_message_id = None
+
     while True:
         try:
-            updates = get_updates(start_id)
-            if updates.get("status") == "OK":
-                data = updates.get("data", {})
-                updates_list = data.get("updates", [])
-                
-                if updates_list:
-                    print(f"📥 {len(updates_list)} آپدیت جدید دریافت شد.")
-                    
-                    # ✅ به‌روزرسانی start_id با آخرین update_time + 1
-                    last_update_time = max([u.get("update_time", 0) for u in updates_list])
-                    start_id = last_update_time + 1
-                    
-                    for upd in updates_list:
+            response = get_updates()
+            if response.get("status") == "OK":
+                data = response.get("data", {})
+                updates = data.get("updates", [])
+
+                if updates:
+                    # پیدا کردن آخرین NewMessage
+                    last_new = None
+                    for upd in reversed(updates):
                         if upd.get("type") == "NewMessage":
-                            chat_id = upd.get("chat_id")
-                            msg_data = upd.get("new_message", {})
-                            sender_id = msg_data.get("sender_id")
-                            text = msg_data.get("text", "")
-                            message_id = msg_data.get("message_id")
-                            
-                            if not chat_id or not sender_id:
-                                continue
-                            
-                            if message_id and message_id in processed_messages:
-                                continue
-                            if message_id:
-                                processed_messages.add(message_id)
-                            
-                            print(f"📩 پیام از {sender_id}: {text}")
-                            process_update(chat_id, sender_id, text)
-                            
+                            last_new = upd
+                            break
+                    
+                    if last_new:
+                        chat_id = last_new.get("chat_id")
+                        msg = last_new.get("new_message", {})
+                        msg_id = msg.get("message_id")
+                        text = msg.get("text", "")
+                        sender = msg.get("sender_id")
+                        
+                        if msg_id != last_message_id:
+                            last_message_id = msg_id
+                            print(f"📩 پیام از {sender}: {text}")
+                            process_update(chat_id, sender, text)
+
             time.sleep(1)
+
         except KeyboardInterrupt:
             print("\n🛑 ربات متوقف شد.")
             break
