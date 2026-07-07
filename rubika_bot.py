@@ -10,7 +10,7 @@ import string
 # ==================================================
 
 TOKEN = "BIJFAB0MVHQAPLZSKUQLWKYWBTLDWCEQCCBHOXLCLXUUARAVJTITTEJHIHWYMCOX"
-ADMIN_ID = "u0BFJ3K03f5d8786134f2ab3c1ebfc40"  # شناسه ادمین
+ADMIN_ID = "u0BFJ3K03f5d8786134f2ab3c1ebfc40"
 API_URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
 
 SETTINGS_FILE = "settings.json"
@@ -101,9 +101,13 @@ def send_message(chat_id, text, chat_keypad=None, chat_keypad_type="New"):
     except Exception as e:
         print(f"❌ خطا: {e}")
 
-def get_updates():
+def get_updates(start_id=None):
+    payload = {}
+    if start_id:
+        payload["start_id"] = start_id
+    payload["timeout"] = 5
     try:
-        r = requests.post(f"{API_URL}/getUpdates", json={"timeout": 5}, timeout=10)
+        r = requests.post(f"{API_URL}/getUpdates", json=payload, timeout=10)
         if r.status_code == 200:
             return r.json()
         return {}
@@ -549,6 +553,8 @@ def handle_admin_commands(chat_id, text):
 
 # ---------- پردازش پیام ورودی ----------
 def process_update(chat_id, sender_id, text):
+    print(f"🔍 پردازش: chat_id={chat_id}, sender={sender_id}, text='{text}'")
+    
     if text == "/start":
         send_message(chat_id, "سلام! به ربات فروشگاهی خوش آمدید.\nلطفاً از منوی زیر استفاده کنید:", build_main_menu())
         return
@@ -641,32 +647,41 @@ def main():
     print(f"👤 ADMIN_ID: {ADMIN_ID}")
     print("⏳ در حال دریافت پیام‌ها...")
     
-    last_message_id = None
+    start_id = None
+    processed_messages = set()
 
     while True:
         try:
-            response = get_updates()
+            response = get_updates(start_id)
             if response.get("status") == "OK":
                 data = response.get("data", {})
                 updates = data.get("updates", [])
+                
+                # به‌روزرسانی start_id با next_offset_id
+                if "next_offset_id" in data:
+                    start_id = data["next_offset_id"]
+                    print(f"🔄 start_id جدید: {start_id}")
 
                 if updates:
-                    # پیدا کردن آخرین NewMessage
-                    last_new = None
-                    for upd in reversed(updates):
-                        if upd.get("type") == "NewMessage":
-                            last_new = upd
-                            break
+                    print(f"📥 {len(updates)} آپدیت دریافت شد.")
                     
-                    if last_new:
-                        chat_id = last_new.get("chat_id")
-                        msg = last_new.get("new_message", {})
-                        msg_id = msg.get("message_id")
-                        text = msg.get("text", "")
-                        sender = msg.get("sender_id")
-                        
-                        if msg_id != last_message_id:
-                            last_message_id = msg_id
+                    for upd in updates:
+                        if upd.get("type") == "NewMessage":
+                            chat_id = upd.get("chat_id")
+                            msg = upd.get("new_message", {})
+                            msg_id = msg.get("message_id")
+                            text = msg.get("text", "")
+                            sender = msg.get("sender_id")
+                            
+                            if not chat_id or not sender:
+                                continue
+                            
+                            # جلوگیری از پردازش تکراری
+                            if msg_id and msg_id in processed_messages:
+                                continue
+                            if msg_id:
+                                processed_messages.add(msg_id)
+                            
                             print(f"📩 پیام از {sender}: {text}")
                             process_update(chat_id, sender, text)
 
