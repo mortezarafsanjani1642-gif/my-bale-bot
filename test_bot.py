@@ -19,9 +19,13 @@ def send_message(chat_id, text, chat_keypad=None, chat_keypad_type="New"):
     except Exception as e:
         print(f"❌ خطا: {e}")
 
-def get_updates():
+def get_updates(offset_id=None):
+    payload = {}
+    if offset_id:
+        payload["offset_id"] = offset_id  # ✅ پارامتر صحیح
+    payload["limit"] = 10  # تعداد آپدیت در هر درخواست
     try:
-        r = requests.post(f"{API_URL}/getUpdates", json={"timeout": 5}, timeout=10)
+        r = requests.post(f"{API_URL}/getUpdates", json=payload, timeout=10)
         if r.status_code == 200:
             return r.json()
         return {}
@@ -42,29 +46,40 @@ def main_menu():
     }
 
 def main():
-    print("🚀 ربات شروع شد...")
-    last_update_time = 0
-    
+    print("🚀 ربات با offset_id شروع شد...")
+    offset_id = None
+    processed = set()
+
     while True:
         try:
-            response = get_updates()
+            response = get_updates(offset_id)
             if response.get("status") == "OK":
                 data = response.get("data", {})
                 updates = data.get("updates", [])
                 
-                # فقط آپدیت‌های جدیدتر از last_update_time رو پردازش کن
-                new_updates = [u for u in updates if u.get("update_time", 0) > last_update_time]
-                
-                if new_updates:
-                    # به‌روزرسانی last_update_time
-                    last_update_time = max([u.get("update_time", 0) for u in new_updates])
+                # به‌روزرسانی offset_id برای درخواست بعدی
+                if "next_offset_id" in data:
+                    offset_id = data["next_offset_id"]
+                    print(f"🔄 offset_id جدید: {offset_id}")
+
+                if updates:
+                    print(f"📥 {len(updates)} آپدیت دریافت شد.")
                     
-                    for upd in new_updates:
+                    for upd in updates:
                         if upd.get("type") == "NewMessage":
                             chat_id = upd.get("chat_id")
                             msg = upd.get("new_message", {})
+                            msg_id = msg.get("message_id")
                             text = msg.get("text", "")
                             sender = msg.get("sender_id")
+                            
+                            if not chat_id or not sender:
+                                continue
+                            
+                            if msg_id and msg_id in processed:
+                                continue
+                            if msg_id:
+                                processed.add(msg_id)
                             
                             print(f"📩 پیام از {sender}: {text}")
                             
@@ -74,9 +89,9 @@ def main():
                                 send_message(chat_id, f"شما {text} را انتخاب کردید.")
                             else:
                                 send_message(chat_id, f"شما گفتید: {text}")
-            
+
             time.sleep(1)
-            
+
         except KeyboardInterrupt:
             print("\n🛑 توقف.")
             break
