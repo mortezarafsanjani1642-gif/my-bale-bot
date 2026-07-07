@@ -2,7 +2,7 @@ from rubka.asynco import Robot
 from rubka.context import Message
 import asyncio
 
-BOT_TOKEN = "توکن_ربات_خود_را_اینجا_وارد_کنید"  # توکن را از @BotFather دریافت کنید
+BOT_TOKEN = "BIJFAB0MVHQAPLZSKUQLWKYWBTLDWCEQCCBHOXLCLXUUARAVJTITTEJHIHWYMCOX"
 
 bot = Robot(token=BOT_TOKEN)
 
