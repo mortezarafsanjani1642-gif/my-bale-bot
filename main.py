@@ -4,8 +4,6 @@ import os
 import random
 import string
 import json
-from dotenv import load_dotenv
-load_dotenv()
 from flask import Flask
 from threading import Thread
 
